@@ -1,0 +1,23 @@
+{
+  "name": "graphinator",
+  "version": "0.1.0",
+  "description": "Graphinator",
+  "module": "index.ts",
+  "type": "module",
+  "bin": {
+    "grt": "./grt.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@superfluid-finance/ethereum-contracts": "^1.9.1",
+    "@types/yargs": "^17.0.32",
+    "axios": "^1.7.1",
+    "ethers": "^6.12.1",
+    "yargs": "^17.7.2"
+  }
+}
