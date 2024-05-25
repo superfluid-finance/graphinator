@@ -24,7 +24,7 @@ export default class Graphinator {
         this.batchContract = new ethers.Contract('0x6b008BAc0e5846cB5d9Ca02ca0e801fCbF88B6f9', BatchContract, this.wallet);
     }
 
-    async runLiquidations(batchSize:number, gasMultiplier:number): Promise<any> {
+    async runLiquidations(batchSize:number, gasMultiplier:number, maxGasPrice:number): Promise<any> {
         try {
             const accounts = await this.subgraph.getCriticalPairs(ISuperToken, this.token);
             if (accounts.length === 0) {
@@ -49,7 +49,7 @@ export default class Graphinator {
 
                 const gasLimit = Math.floor(Number(gasEstimate) * gasMultiplier);
                 const initialGasPrice = (await this.provider.getFeeData()).gasPrice;
-                if(initialGasPrice && initialGasPrice <= (ethers.parseUnits('200', 'gwei'))) {
+                if(initialGasPrice && initialGasPrice <= maxGasPrice) {
                     // send tx
                     const tx = {
                         to: txData.target.toString(),
@@ -64,6 +64,8 @@ export default class Graphinator {
                     const transactionResponse = await this.provider.broadcastTransaction(signedTx);
                     const receipt = await transactionResponse.wait();
                     console.log(`${new Date().toISOString()} - (Graphinator) txhash ${receipt?.hash}`);
+                    // sleep for 3 seconds
+                    await new Promise(resolve => setTimeout(resolve, 3000));
                 } else {
                     console.log(`${new Date().toISOString()} - (Graphinator) gas price too high, skipping tx`);
                 }

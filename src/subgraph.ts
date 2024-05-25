@@ -130,6 +130,8 @@ class SubGraphReader {
             for (const account of criticalAccounts) {
                 if(account.token.id.toLowerCase() === "0x1eff3dd78f4a14abfa9fa66579bd3ce9e1b30529".toLowerCase()) {
                     const isCritical = await targetToken.isAccountCriticalNow(account.account.id);
+                    // sleep 0.5s to avoid rate limiting
+                    await new Promise(r => setTimeout(r, 500));
                     if(isCritical) {
                         console.log("Critical account", account.account.id, "for token", account.token.id);
                         const cfaFlows = await this.subgraph.getAllOutFlows(account.token.id, account.account.id);

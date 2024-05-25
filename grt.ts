@@ -35,6 +35,12 @@ const argv = await yargs(hideBin(process.argv))
         description: 'Set to true to loop forever, false to run once',
         default: false
     })
+    .option('maxGasPrice', {
+        alias: 'm',
+        type: 'number',
+        description: 'Set the max gas price',
+        default: 90000000
+    })
     .parse();
 
 const runAgainIn = 15 * 60 * 1000;
@@ -43,19 +49,20 @@ const batchSize = argv.batchSize;
 const gasMultiplier = argv.gasMultiplier;
 const token = argv.token.toLowerCase();
 const loop = argv.loop;
-
+const maxGasPrice = argv.maxGasPrice;
 
 const ghr = new Graphinator(network, token);
 if(loop) {
     console.log(new Date().toISOString() + " - run liquidations forever...");
+    await ghr.runLiquidations(batchSize, gasMultiplier, maxGasPrice);
     setInterval(async () => {
         try {
-            await ghr.runLiquidations(batchSize, gasMultiplier);
+            await ghr.runLiquidations(batchSize, gasMultiplier, maxGasPrice);
         } catch (error) {
             console.error(error);
         }
     }, runAgainIn);
 } else {
     console.log(new Date().toISOString() + " - run liquidations...");
-    await ghr.runLiquidations(batchSize, gasMultiplier);
+    await ghr.runLiquidations(batchSize, gasMultiplier, maxGasPrice);
 }
