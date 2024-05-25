@@ -2,6 +2,7 @@ import { ethers } from "ethers";
 import SubGraphReader from "./subgraph.ts";
 const ISuperToken = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/interfaces/superfluid/ISuperToken.sol/ISuperToken.json").abi;
 const BatchContract = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/BatchLiquidator.sol/BatchLiquidator.json").abi;
+const GDAv1Forwarder = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/GDAv1Forwarder.sol/GDAv1Forwarder.json").abi;
 
 
 export default class Graphinator {
@@ -11,6 +12,7 @@ export default class Graphinator {
     private provider: ethers.JsonRpcProvider;
     private wallet: ethers.Wallet;
     private batchContract: ethers.Contract;
+    private gdaForwarder: ethers.Contract;
 
     constructor(network: string, token: string) {
         this.provider = new ethers.JsonRpcProvider(`https://${network}.rpc.x.superfluid.dev/`);
@@ -22,15 +24,17 @@ export default class Graphinator {
         }
         this.wallet = new ethers.Wallet(__privateKey, this.provider);
         this.batchContract = new ethers.Contract('0x6b008BAc0e5846cB5d9Ca02ca0e801fCbF88B6f9', BatchContract, this.wallet);
+        this.gdaForwarder = new ethers.Contract('0x6DA13Bde224A05a288748d857b9e7DDEffd1dE08', GDAv1Forwarder, this.wallet);
     }
 
     async runLiquidations(batchSize:number, gasMultiplier:number): Promise<any> {
         try {
-            const accounts = await this.subgraph.getCriticalPairs(ISuperToken, this.token);
+            const accounts = await this.subgraph.getCriticalPairs(ISuperToken, this.token, this.gdaForwarder);
             if (accounts.length === 0) {
                 console.log(`${new Date().toISOString()} - (Graphinator) no accounts to liquidate found`);
                 return;
             }
+            console.log(`--- ${new Date().toISOString()} - (Graphinator) found ${accounts.length} streams to liquidate ---`);
             const filteredAccounts = accounts.filter(account => account.token.toLowerCase() === this.token.toLowerCase());
 
             // split into chunks
@@ -49,7 +53,8 @@ export default class Graphinator {
 
                 const gasLimit = Math.floor(Number(gasEstimate) * gasMultiplier);
                 const initialGasPrice = (await this.provider.getFeeData()).gasPrice;
-                if(initialGasPrice && initialGasPrice <= (ethers.parseUnits('200', 'gwei'))) {
+                const maxGasPriceMwei = process.env.MAX_GAS_PRICE_MWEI || '500'; // default: 500 mwei = 0.5 gwei
+                if(initialGasPrice && initialGasPrice <= (ethers.parseUnits(maxGasPriceMwei, 'mwei'))) {
                     // send tx
                     const tx = {
                         to: txData.target.toString(),
@@ -65,7 +70,7 @@ export default class Graphinator {
                     const receipt = await transactionResponse.wait();
                     console.log(`${new Date().toISOString()} - (Graphinator) txhash ${receipt?.hash}`);
                 } else {
-                    console.log(`${new Date().toISOString()} - (Graphinator) gas price too high, skipping tx`);
+                    console.log(`${new Date().toISOString()} - (Graphinator) gas price ${initialGasPrice} too high, skipping tx`);
                 }
             }
             console.log(`${new Date().toISOString()} - (Graphinator) run complete... waiting 30 seconds before next run`);
