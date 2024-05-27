@@ -1,6 +1,6 @@
 import axios, {type AxiosResponse } from 'axios';
 import {JsonRpcProvider, Contract, type AddressLike, type Interface, type InterfaceAbi} from "ethers";
-import type {ContractManager} from "./rpc.ts";
+import {type ContractManager, SuperToken} from "./rpc.ts";
 
 const log = (msg: string, lineDecorator="") => console.log(`${new Date().toISOString()} - ${lineDecorator} (Graphinator) ${msg}`);
 const MAX_ITEMS = 1000;
@@ -10,7 +10,8 @@ export type Pair = {
     sender: string,
     receiver: string,
     token: string,
-    flowrate: bigint
+    flowrate: bigint,
+    priority: number
 };
 
 class Subgraph {
@@ -127,7 +128,7 @@ class Subgraph {
 
 class SubGraphReader {
     private subgraph: Subgraph;
-    private targetToken: Contract;
+    private targetToken: SuperToken;
     private gdaForwarder: Contract;
 
     constructor(url: string, contractManager: ContractManager) {
@@ -136,7 +137,7 @@ class SubGraphReader {
         this.gdaForwarder = contractManager.getGDAForwarderInstance();
     }
 
-    async getCriticalPairs(): Promise<Pair[]> {
+    async getCriticalPairs(netFlowThreshold: bigint): Promise<Pair[]> {
 
         const returnData: Pair[] = [];
         const now = Math.floor(Date.now() / 1000);
@@ -146,20 +147,24 @@ class SubGraphReader {
         for (const account of criticalAccounts) {
             if(account.token.id.toLowerCase() === tokenAddressLowerCase) {
                 const isCritical = await this.targetToken.isAccountCriticalNow(account.account.id);
+
                 // sleep 0.5s to avoid rate limiting
                 await new Promise(r => setTimeout(r, 500));
                 if(isCritical) {
+
                     const cfaNetFlowRate = BigInt(account.totalCFANetFlowRate);
                     const gdaNetFlowRate = await this.gdaForwarder.getNetFlow(account.token.id, account.account.id);
-                    let netFlowRate = cfaNetFlowRate + gdaNetFlowRate;
-                    if (netFlowRate >= BigInt(0)) {
-                        log(`account ${account.account.id} netFlowRate ${netFlowRate}, skipping`, "⏭️");
+                    let totalNetFlow = cfaNetFlowRate + gdaNetFlowRate;
+                    const priority = await this.targetToken.getPriority(account.account.id, totalNetFlow, netFlowThreshold)
+
+                    if (totalNetFlow >= BigInt(0)) {
+                        log(`account ${account.account.id} netFlowRate ${totalNetFlow}, skipping`, "⏭️");
                         continue;
                     }
-                    //console.log("nr cfa in", account.activeIncomingStreamCount, "nr cfa out", account.activeCFAOutgoingStreamCount, "nr gda out", account.activeGDAOutgoingStreamCount);
+
                     const cfaFlows = await this.subgraph.getAllOutFlows(account.token.id, account.account.id);
                     const nrFlows = cfaFlows.length;
-                    log(`account ${account.account.id} netFlowRate ${netFlowRate} with cfaNetFlowRate ${cfaNetFlowRate} & gdaNetFlowRate ${gdaNetFlowRate}`, "⚠️");
+                    log(`account ${account.account.id} netFlowRate ${totalNetFlow} with cfaNetFlowRate ${cfaNetFlowRate} & gdaNetFlowRate ${gdaNetFlowRate}`, "⚠️");
                     log(`\t|--------------> has ${nrFlows} outflows`, "⚖️");
                     let processedFlows = 0;
                     for (const flow of cfaFlows) {
@@ -169,12 +174,13 @@ class SubGraphReader {
                             sender: data[0],
                             receiver: data[1],
                             token: data[2],
-                            flowrate: BigInt(flow.currentFlowRate)
+                            flowrate: BigInt(flow.currentFlowRate),
+                            priority: priority
                         });
-                        netFlowRate += BigInt(flow.currentFlowRate);
+                        totalNetFlow += BigInt(flow.currentFlowRate);
                         //console.log(`CFA flow: ${data[0]} -> ${data[1]}: ${flow.currentFlowRate} - projected acc net flow rate now: ${netFlowRate}`);
                         processedFlows++;
-                        if (netFlowRate >= BigInt(0)) {
+                        if (totalNetFlow >= BigInt(0)) {
                             break;
                         }
                     }

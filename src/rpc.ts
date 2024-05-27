@@ -4,6 +4,7 @@ import SubGraphReader from "./subgraph.ts";
 const ISuperToken = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/interfaces/superfluid/ISuperToken.sol/ISuperToken.json").abi;
 const BatchContract = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/BatchLiquidator.sol/BatchLiquidator.json").abi;
 const GDAv1Forwarder = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/GDAv1Forwarder.sol/GDAv1Forwarder.json").abi;
+const log = (msg: string, lineDecorator="") => console.log(`${new Date().toISOString()} - ${lineDecorator} (Graphinator) ${msg}`);
 
 type TransactionData = {
     data: string,
@@ -69,18 +70,74 @@ export default class RPC {
     }
 }
 
+export class SuperToken {
+    private superToken: ethers.Contract;
+
+    constructor(superToken: ethers.Contract) {
+        this.superToken = superToken;
+    }
+
+    async getAddress() {
+        return await this.superToken.getAddress();
+    }
+
+    async isAccountCriticalNow(account: AddressLike): Promise<boolean> {
+        return await this.superToken.isAccountCriticalNow(account);
+    }
+
+    async getPriority(criticalAccount: AddressLike, totalNetFlow: bigint, netFlowThreshold: bigint): Promise<number> {
+
+        const [rtb, isSolvent] = await Promise.all([
+                this.superToken.realtimeBalanceOfNow(criticalAccount),
+                this.superToken.isAccountSolventNow(criticalAccount)
+            ]);
+
+        let { availableBalance, deposit } = rtb;
+        availableBalance = -BigInt(availableBalance);
+
+        if (deposit === 0n) {
+            throw new Error("Deposit is zero, can't calculate priority.");
+        }
+        const consumedDeposit = BigInt(deposit - availableBalance);
+        const howFastIsConsuming = consumedDeposit * 100n / totalNetFlow;
+
+        // baseline
+        let priority = 50n;
+        if (!isSolvent) {
+            priority += 20n;
+        }
+        if (howFastIsConsuming > 10n) {
+            priority += 10n;
+        }
+        // adjusted to have linear growth and not a step function
+        if (totalNetFlow > 0n) {
+            priority += (20n * totalNetFlow) / netFlowThreshold;
+        }
+        // +1 is just to make sure it's not 0 and also to make it 1-100
+        const consumedDepositPercentage = Math.max(0, Math.min(100, Math.round(Number(consumedDeposit * 100n) / Number(deposit) + 1)));
+        const progressBarLength = 50;
+        const filledLength = Math.round(consumedDepositPercentage / 100 * progressBarLength);
+        const progressBar = '█'.repeat(filledLength) + '-'.repeat(progressBarLength - filledLength);
+        log(`acccount ${criticalAccount} deposit consumed: [${progressBar}] ${consumedDepositPercentage}%`, "⚖️");
+
+        const priorityNumber = Number(priority);
+        return Math.max(0, Math.min(100, priorityNumber));
+    }
+
+}
+
 // Holds the contract addresses and ABIs
 export class ContractManager {
 
     private batchContract: ethers.Contract;
     private gdaForwarder: ethers.Contract;
-    private superToken: ethers.Contract;
+    private superToken: SuperToken;
 
     constructor(config: { batchContractAddress: string; gdaForwarderAddress: string; superTokenAddress: string; }, wallet: ethers.Wallet) {
 
         this.batchContract = new ethers.Contract(config.batchContractAddress, BatchContract, wallet);
         this.gdaForwarder = new ethers.Contract(config.gdaForwarderAddress, GDAv1Forwarder, wallet);
-        this.superToken = new ethers.Contract(config.superTokenAddress, ISuperToken, wallet);
+        this.superToken = new SuperToken(new ethers.Contract(config.superTokenAddress, ISuperToken, wallet));
     }
 
     getBatchContractInstance() {

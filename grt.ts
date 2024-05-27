@@ -63,15 +63,15 @@ const config = {
 const ghr = new Graphinator(network, config);
 if(loop) {
     log("run liquidations forever...", "🤖");
-    await ghr.run(batchSize, gasMultiplier, maxGasPrice);
+    await ghr.run(batchSize, gasMultiplier, maxGasPrice, BigInt(0));
     setInterval(async () => {
         try {
-            await ghr.run(batchSize, gasMultiplier, maxGasPrice);
+            await ghr.run(batchSize, gasMultiplier, maxGasPrice, BigInt(0));
         } catch (error) {
             console.error(error);
         }
     }, runAgainIn);
 } else {
     log("run liquidations once...", "🤖");
-    await ghr.run(batchSize, gasMultiplier, maxGasPrice);
+    await ghr.run(batchSize, gasMultiplier, maxGasPrice, BigInt(0));
 }
