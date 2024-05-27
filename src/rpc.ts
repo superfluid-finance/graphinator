@@ -93,20 +93,21 @@ export class SuperToken {
             ]);
 
         let { availableBalance, deposit } = rtb;
-        availableBalance = -BigInt(availableBalance);
+        availableBalance = -Number(availableBalance);
+        deposit = Number(deposit);
 
-        if (deposit === 0n) {
+        if (deposit === 0) {
             throw new Error("Deposit is zero, can't calculate priority.");
         }
-        const consumedDeposit = BigInt(deposit - availableBalance);
-        const howFastIsConsuming = consumedDeposit * 100n / totalNetFlow;
+        const consumedDepositPercentage = Math.max(0, Math.min(100, Math.round(availableBalance / deposit * 100)));
+        const howFastIsConsuming = Math.abs(Number(totalNetFlow)) / Number(netFlowThreshold);
 
         // baseline
         let priority = 50n;
         if (!isSolvent) {
             priority += 20n;
         }
-        if (howFastIsConsuming > 10n) {
+        if (howFastIsConsuming > 10) {
             priority += 10n;
         }
         // adjusted to have linear growth and not a step function
@@ -114,7 +115,6 @@ export class SuperToken {
             priority += (20n * totalNetFlow) / netFlowThreshold;
         }
         // +1 is just to make sure it's not 0 and also to make it 1-100
-        const consumedDepositPercentage = Math.max(0, Math.min(100, Math.round(Number(consumedDeposit * 100n) / Number(deposit) + 1)));
         const progressBarLength = 50;
         const filledLength = Math.round(consumedDepositPercentage / 100 * progressBarLength);
         const progressBar = '█'.repeat(filledLength) + '-'.repeat(progressBarLength - filledLength);
@@ -123,7 +123,6 @@ export class SuperToken {
         const priorityNumber = Number(priority);
         return Math.max(0, Math.min(100, priorityNumber));
     }
-
 }
 
 // Holds the contract addresses and ABIs
@@ -134,7 +133,6 @@ export class ContractManager {
     private superToken: SuperToken;
 
     constructor(config: { batchContractAddress: string; gdaForwarderAddress: string; superTokenAddress: string; }, wallet: ethers.Wallet) {
-
         this.batchContract = new ethers.Contract(config.batchContractAddress, BatchContract, wallet);
         this.gdaForwarder = new ethers.Contract(config.gdaForwarderAddress, GDAv1Forwarder, wallet);
         this.superToken = new SuperToken(new ethers.Contract(config.superTokenAddress, ISuperToken, wallet));
