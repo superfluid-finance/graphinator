@@ -1,6 +1,8 @@
 import axios, {type AxiosResponse } from 'axios';
-import {JsonRpcProvider, Contract} from "ethers";
+import {JsonRpcProvider, Contract, type AddressLike, type Interface, type InterfaceAbi} from "ethers";
+import type {ContractManager} from "./rpc.ts";
 
+const log = (msg: string, lineDecorator="") => console.log(`${new Date().toISOString()} - ${lineDecorator} (Graphinator) ${msg}`);
 const MAX_ITEMS = 1000;
 
 export type Pair = {
@@ -15,10 +17,14 @@ class Subgraph {
     private subgraphUrl: string;
 
     constructor(url: string) {
+        if(!url) {
+            throw new Error("Subgraph URL not set");
+        }
         this.subgraphUrl = url;
     }
 
     async graphql(query: string, accept?: string): Promise<AxiosResponse<any>> {
+
         if (!this.subgraphUrl) {
             throw new Error("Subgraph URL not set");
         }
@@ -121,60 +127,59 @@ class Subgraph {
 
 class SubGraphReader {
     private subgraph: Subgraph;
-    private provider
+    private targetToken: Contract;
+    private gdaForwarder: Contract;
 
-    constructor(url: string, provider: JsonRpcProvider) {
+    constructor(url: string, contractManager: ContractManager) {
         this.subgraph = new Subgraph(url);
-        this.provider = provider;
+        this.targetToken = contractManager.getSuperTokenInstance();
+        this.gdaForwarder = contractManager.getGDAForwarderInstance();
     }
 
-    async getCriticalPairs(superTokenABI: any, token: string, gdaForwarder: any): Promise<Pair[]> {
+    async getCriticalPairs(): Promise<Pair[]> {
 
         const returnData: Pair[] = [];
         const now = Math.floor(Date.now() / 1000);
-        //
         const criticalAccounts = await this.subgraph.getAccountsCriticalAt(now);
-        const targetToken = new Contract(token, superTokenABI, this.provider);
+        const tokenAddressLowerCase = (await this.targetToken.getAddress()).toLowerCase();
 
-        if (criticalAccounts.length !== 0) {
-            for (const account of criticalAccounts) {
-                if(account.token.id.toLowerCase() === token.toLowerCase()) {
-                    const isCritical = await targetToken.isAccountCriticalNow(account.account.id);
-                    // sleep 0.5s to avoid rate limiting
-                    await new Promise(r => setTimeout(r, 500));
-                    if(isCritical) {
-                        const cfaNetFlowRate = BigInt(account.totalCFANetFlowRate);
-                        const gdaNetFlowRate = await gdaForwarder.getNetFlow(account.token.id, account.account.id);
-                        let netFlowRate = cfaNetFlowRate + gdaNetFlowRate;
+        for (const account of criticalAccounts) {
+            if(account.token.id.toLowerCase() === tokenAddressLowerCase) {
+                const isCritical = await this.targetToken.isAccountCriticalNow(account.account.id);
+                // sleep 0.5s to avoid rate limiting
+                await new Promise(r => setTimeout(r, 500));
+                if(isCritical) {
+                    const cfaNetFlowRate = BigInt(account.totalCFANetFlowRate);
+                    const gdaNetFlowRate = await this.gdaForwarder.getNetFlow(account.token.id, account.account.id);
+                    let netFlowRate = cfaNetFlowRate + gdaNetFlowRate;
+                    if (netFlowRate >= BigInt(0)) {
+                        log(`account ${account.account.id} netFlowRate ${netFlowRate}, skipping`, "⏭️");
+                        continue;
+                    }
+                    //console.log("nr cfa in", account.activeIncomingStreamCount, "nr cfa out", account.activeCFAOutgoingStreamCount, "nr gda out", account.activeGDAOutgoingStreamCount);
+                    const cfaFlows = await this.subgraph.getAllOutFlows(account.token.id, account.account.id);
+                    const nrFlows = cfaFlows.length;
+                    log(`account ${account.account.id} netFlowRate ${netFlowRate} with cfaNetFlowRate ${cfaNetFlowRate} & gdaNetFlowRate ${gdaNetFlowRate}`, "⚠️");
+                    log(`\t|--------------> has ${nrFlows} outflows`, "⚖️");
+                    let processedFlows = 0;
+                    for (const flow of cfaFlows) {
+                        const data = flow.id.split("-");
+                        returnData.push({
+                            source: "CFA",
+                            sender: data[0],
+                            receiver: data[1],
+                            token: data[2],
+                            flowrate: BigInt(flow.currentFlowRate)
+                        });
+                        netFlowRate += BigInt(flow.currentFlowRate);
+                        //console.log(`CFA flow: ${data[0]} -> ${data[1]}: ${flow.currentFlowRate} - projected acc net flow rate now: ${netFlowRate}`);
+                        processedFlows++;
                         if (netFlowRate >= BigInt(0)) {
-                            console.log(`Account ${account.account.id} net fr is ${netFlowRate}, skipping`);
-                            continue;
+                            break;
                         }
-                        console.log("Critical account", account.account.id, "for token", account.token.id, "net fr", netFlowRate, "cfa net fr", cfaNetFlowRate, "gda net fr", gdaNetFlowRate);
-                        //console.log("nr cfa in", account.activeIncomingStreamCount, "nr cfa out", account.activeCFAOutgoingStreamCount, "nr gda out", account.activeGDAOutgoingStreamCount);
-                        const cfaFlows = await this.subgraph.getAllOutFlows(account.token.id, account.account.id);
-                        const nrFlows = cfaFlows.length;
-                        console.log(`  has ${nrFlows} outflows`);
-                        let processedFlows = 0;
-                        for (const flow of cfaFlows) {
-                            const data = flow.id.split("-");
-                            returnData.push({
-                                source: "CFA",
-                                sender: data[0],
-                                receiver: data[1],
-                                token: data[2],
-                                flowrate: BigInt(flow.currentFlowRate)
-                            });
-                            netFlowRate += BigInt(flow.currentFlowRate);
-                            //console.log(`CFA flow: ${data[0]} -> ${data[1]}: ${flow.currentFlowRate} - projected acc net flow rate now: ${netFlowRate}`);
-                            processedFlows++;
-                            if (netFlowRate >= BigInt(0)) {
-                                break;
-                            }
-                        }
-                        if (processedFlows > 0) {
-                            console.log(`  net fr projected to become positive with ${processedFlows} of ${nrFlows} liquidated`);
-                        }
+                    }
+                    if (processedFlows > 0) {
+                        log(`netFlowRate projected to become positive with ${processedFlows} of ${nrFlows} liquidated`, "🔄");
                     }
                 }
             }
