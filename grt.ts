@@ -47,14 +47,18 @@ const loop = argv.loop;
 
 const ghr = new Graphinator(network, token);
 if(loop) {
-    console.log(new Date().toISOString() + " - run liquidations forever...");
-    setInterval(async () => {
+    const executeLiquidations = async () => {
+        console.log(`running`);
         try {
             await ghr.runLiquidations(batchSize, gasMultiplier);
         } catch (error) {
             console.error(error);
+        } finally {
+            console.log(`run again in ${runAgainIn}`);
+            setTimeout(executeLiquidations, runAgainIn); // Schedule the next run
         }
-    }, runAgainIn);
+    };
+    executeLiquidations();
 } else {
     console.log(new Date().toISOString() + " - run liquidations...");
     await ghr.runLiquidations(batchSize, gasMultiplier);

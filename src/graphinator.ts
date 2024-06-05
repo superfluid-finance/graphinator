@@ -66,11 +66,17 @@ export default class Graphinator {
                     };
 
                     const signedTx = await this.wallet.signTransaction(tx);
-                    const transactionResponse = await this.provider.broadcastTransaction(signedTx);
-                    const receipt = await transactionResponse.wait();
-                    console.log(`${new Date().toISOString()} - (Graphinator) txhash ${receipt?.hash}`);
+                    try {
+                        const transactionResponse = await this.provider.broadcastTransaction(signedTx);
+                        const receipt = await transactionResponse.wait();
+                        console.log(`${new Date().toISOString()} - (Graphinator) txhash ${receipt?.hash} - gas price ${initialGasPrice}`);
+                    } catch(e) {
+                        console.error(`### tx err: ${e}`);
+                    }
                 } else {
                     console.log(`${new Date().toISOString()} - (Graphinator) gas price ${initialGasPrice} too high, skipping tx`);
+                    const sleep = (ms: number | undefined) => new Promise(resolve => setTimeout(resolve, ms));
+                    await sleep(1000);
                 }
             }
             console.log(`${new Date().toISOString()} - (Graphinator) run complete... waiting 30 seconds before next run`);

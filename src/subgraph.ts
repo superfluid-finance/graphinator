@@ -39,17 +39,19 @@ class Subgraph {
             const res = await this.graphql(queryFn(lastId));
 
             if (res.status !== 200 || res.data.errors) {
-                console.error(res.data);
+                console.error(`bad response ${res.status}`);
                 //process.exit(2);
-            }
-
-            const newItems = toItems(res);
-            items.push(...newItems.map(itemFn));
-
-            if (newItems.length < MAX_ITEMS) {
-                break;
+            } else if (res.data === "") {
+                console.error("empty response data");
             } else {
-                lastId = newItems[newItems.length - 1].id;
+                const newItems = toItems(res);
+                items.push(...newItems.map(itemFn));
+
+                if (newItems.length < MAX_ITEMS) {
+                    break;
+                } else {
+                    lastId = newItems[newItems.length - 1].id;
+                }
             }
         }
 
