@@ -51,9 +51,8 @@ if (network === undefined) {
     // TODO: probably not a valid code path
     dotenv.config();
 } else {
-    dotenv.config({ path: path.resolve(__dirname, `../../.env_${network}`) });
+    dotenv.config({ path: path.resolve(__dirname, `.env_${network}`) });
 }
-
 
 const ghr = new Graphinator(network, token);
 if(loop) {
