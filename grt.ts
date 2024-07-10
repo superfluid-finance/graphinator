@@ -1,5 +1,8 @@
 #!/usr/bin/env bun
 
+import path from "path";
+import dotenv from "dotenv";
+
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import Graphinator from './src/graphinator';
@@ -43,6 +46,13 @@ const batchSize = argv.batchSize;
 const gasMultiplier = argv.gasMultiplier;
 const token = argv.token.toLowerCase();
 const loop = argv.loop;
+
+if (network === undefined) {
+    // TODO: probably not a valid code path
+    dotenv.config();
+} else {
+    dotenv.config({ path: path.resolve(__dirname, `../../.env_${network}`) });
+}
 
 
 const ghr = new Graphinator(network, token);

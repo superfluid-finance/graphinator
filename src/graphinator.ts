@@ -4,6 +4,7 @@ const ISuperToken = require("@superfluid-finance/ethereum-contracts/build/hardha
 const BatchContract = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/BatchLiquidator.sol/BatchLiquidator.json").abi;
 const GDAv1Forwarder = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/GDAv1Forwarder.sol/GDAv1Forwarder.json").abi;
 
+const replacer = (k, v) => typeof v === 'bigint' ? v.toString() : v;
 
 export default class Graphinator {
     private subgraph: SubGraphReader;
@@ -22,6 +23,11 @@ export default class Graphinator {
         if(!__privateKey) {
             throw new Error("No private key provided");
         }
+        // default 20% - which is well into pleb period
+        this.depositConsumedPctThreshold = import.meta.env.DEPOSIT_CONSUMED_PCT_THRESHOLD
+            ? Number(import.meta.env.DEPOSIT_CONSUMED_PCT_THRESHOLD)
+            : 20;
+        console.log(`(Graphinator) depositConsumedPctThreshold: ${this.depositConsumedPctThreshold}`);
         this.wallet = new ethers.Wallet(__privateKey, this.provider);
         this.batchContract = new ethers.Contract('0x6b008BAc0e5846cB5d9Ca02ca0e801fCbF88B6f9', BatchContract, this.wallet);
         this.gdaForwarder = new ethers.Contract('0x6DA13Bde224A05a288748d857b9e7DDEffd1dE08', GDAv1Forwarder, this.wallet);
@@ -29,13 +35,17 @@ export default class Graphinator {
 
     async runLiquidations(batchSize:number, gasMultiplier:number): Promise<any> {
         try {
-            const accounts = await this.subgraph.getCriticalPairs(ISuperToken, this.token, this.gdaForwarder);
+            const accounts = await this.subgraph.getCriticalPairs(ISuperToken, this.token, this.gdaForwarder, this.depositConsumedPctThreshold);
             if (accounts.length === 0) {
                 console.log(`${new Date().toISOString()} - (Graphinator) no accounts to liquidate found`);
                 return;
             }
             console.log(`--- ${new Date().toISOString()} - (Graphinator) found ${accounts.length} streams to liquidate ---`);
-            const filteredAccounts = accounts.filter(account => account.token.toLowerCase() === this.token.toLowerCase());
+            //const filteredAccounts = accounts.filter(account => account.token.toLowerCase() === this.token.toLowerCase());
+            // TODO: allow token to be undefined for "no filter"
+            const filteredAccounts = this.token !== "0x0000000000000000000000000000000000000000"
+                ? accounts.filter(account => account.token.toLowerCase() === this.token.toLowerCase())
+                : accounts; // filter nothing
 
             // split into chunks
             const chunks = [];
@@ -65,13 +75,17 @@ export default class Graphinator {
                         nonce: await (this.provider.getTransactionCount(this.wallet.address))
                     };
 
-                    const signedTx = await this.wallet.signTransaction(tx);
-                    try {
-                        const transactionResponse = await this.provider.broadcastTransaction(signedTx);
-                        const receipt = await transactionResponse.wait();
-                        console.log(`${new Date().toISOString()} - (Graphinator) txhash ${receipt?.hash} - gas price ${initialGasPrice}`);
-                    } catch(e) {
-                        console.error(`### tx err: ${e}`);
+                    if (process.env.DRY_RUN) {
+                        console.log(`${new Date().toISOString()} - (Graphinator) dry run - tx: ${JSON.stringify(tx, replacer)}`);
+                    } else {
+                        const signedTx = await this.wallet.signTransaction(tx);
+                        try {
+                            const transactionResponse = await this.provider.broadcastTransaction(signedTx);
+                            const receipt = await transactionResponse.wait();
+                            console.log(`${new Date().toISOString()} - (Graphinator) txhash ${receipt?.hash} - gas price ${initialGasPrice}`);
+                        } catch(e) {
+                            console.error(`### tx err: ${e}`);
+                        }
                     }
                 } else {
                     console.log(`${new Date().toISOString()} - (Graphinator) gas price ${initialGasPrice} too high, skipping tx`);
@@ -79,11 +93,14 @@ export default class Graphinator {
                     await sleep(1000);
                 }
             }
+            // TODO: we abolish this internal loop. That ok?
+            /*
             console.log(`${new Date().toISOString()} - (Graphinator) run complete... waiting 30 seconds before next run`);
             // sleep for 30 seconds
             await new Promise(resolve => setTimeout(resolve, 10000));
             // self run until no more accounts to liquidate
             return this.runLiquidations(batchSize, gasMultiplier);
+            */
         } catch (error) {
             console.log(error);
         }

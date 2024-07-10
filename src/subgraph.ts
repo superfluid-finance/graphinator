@@ -130,31 +130,45 @@ class SubGraphReader {
         this.provider = provider;
     }
 
-    async getCriticalPairs(superTokenABI: any, token: string, gdaForwarder: any): Promise<Pair[]> {
+    async getCriticalPairs(superTokenABI: any, token: string, gdaForwarder: any, depositConsumedPctThreshold: number): Promise<Pair[]> {
 
         const returnData: Pair[] = [];
         const now = Math.floor(Date.now() / 1000);
-        //
+        // gets all critical accounts in any superToken
         const criticalAccounts = await this.subgraph.getAccountsCriticalAt(now);
-        const targetToken = new Contract(token, superTokenABI, this.provider);
+        //const targetToken = new Contract(token, superTokenABI, this.provider);
 
         if (criticalAccounts.length !== 0) {
             for (const account of criticalAccounts) {
-                if(account.token.id.toLowerCase() === token.toLowerCase()) {
-                    const isCritical = await targetToken.isAccountCriticalNow(account.account.id);
-                    if(isCritical) {
+                console.log("? Probing ", account.account.id, "token", account.token.id, "net fr", account.totalNetFlowRate, "cfa net fr", account.totalCFANetFlowRate, "gda net fr", await gdaForwarder.getNetFlow(account.token.id, account.account.id));
+                const targetToken = new Contract(account.token.id, superTokenABI, this.provider);
+                //if(account.token.id.toLowerCase() === token.toLowerCase()) {
+//                    const isCritical = await targetToken.isAccountCriticalNow(account.account.id);
+                    const rtb = await targetToken.realtimeBalanceOfNow(account.account.id);
+                    let { availableBalance, deposit } = rtb;
+                    if (availableBalance < 0) { // critical or insolvent
+                        //console.log("  available balance", availableBalance, "deposit", deposit);
+                        const consumedDepositPercentage = -Number(availableBalance * 100n / deposit); //Math.max(0, Math.min(100, Math.round(-Number(availableBalance) / Number(deposit) * 100)));
+                        //console.log("  consumed deposit", consumedDepositPercentage, "%");
+
+                        if (consumedDepositPercentage < depositConsumedPctThreshold) {
+                            //console.log(`  deposit consumed percentage ${consumedDepositPercentage} < ${depositConsumedPctThreshold}, skipping`);
+                            continue;
+                        }
+
+//                    if(isCritical) {
                         const cfaNetFlowRate = BigInt(account.totalCFANetFlowRate);
                         const gdaNetFlowRate = await gdaForwarder.getNetFlow(account.token.id, account.account.id);
                         let netFlowRate = cfaNetFlowRate + gdaNetFlowRate;
                         if (netFlowRate >= BigInt(0)) {
-                            console.log(`Account ${account.account.id} net fr is ${netFlowRate}, skipping`);
+                            //console.log(`account ${account.account.id} net fr is ${netFlowRate}, skipping`);
                             continue;
                         }
-                        console.log("Critical account", account.account.id, "for token", account.token.id, "net fr", netFlowRate, "cfa net fr", cfaNetFlowRate, "gda net fr", gdaNetFlowRate);
+                        console.log("! Critical", account.account.id, "token", account.token.id, "net fr", netFlowRate, "(cfa", cfaNetFlowRate, "gda", gdaNetFlowRate, ")");
+
                         //console.log("nr cfa in", account.activeIncomingStreamCount, "nr cfa out", account.activeCFAOutgoingStreamCount, "nr gda out", account.activeGDAOutgoingStreamCount);
                         const cfaFlows = await this.subgraph.getAllOutFlows(account.token.id, account.account.id);
                         const nrFlows = cfaFlows.length;
-                        console.log(`  has ${nrFlows} outflows`);
                         let processedFlows = 0;
                         for (const flow of cfaFlows) {
                             const data = flow.id.split("-");
@@ -172,15 +186,20 @@ class SubGraphReader {
                                 break;
                             }
                         }
+                        console.log("  available balance", availableBalance, "deposit", deposit, "consumed deposit", consumedDepositPercentage, "%", nrFlows, "cfa outflows", processedFlows, "of", nrFlows, "to be liquidated");
                         if (processedFlows > 0) {
-                            console.log(`  net fr projected to become positive with ${processedFlows} of ${nrFlows} liquidated`);
+                            //console.log(`  net fr projected to become positive with ${processedFlows} of ${nrFlows} liquidated`);
+                        } else {
+                            console.log("!!!  no cfa outflows to liquidate");
+
                         }
                     }
-                }
+                //}
             }
         }
 
         // sort by flowrate descending
+        // TODO: this doesn't make much sense anymore in multi-token mode
         return returnData.sort((a, b) => Number(b.flowrate - a.flowrate));
     }
 }
