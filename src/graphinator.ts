@@ -3,7 +3,9 @@ import SubGraphReader from "./subgraph.ts";
 const ISuperToken = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/interfaces/superfluid/ISuperToken.sol/ISuperToken.json").abi;
 const BatchContract = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/BatchLiquidator.sol/BatchLiquidator.json").abi;
 const GDAv1Forwarder = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/GDAv1Forwarder.sol/GDAv1Forwarder.json").abi;
-import metadata from "@superfluid-finance/metadata";
+
+// TODO: hack because metadata contains a previous, ABI incompatible version of BatchLiquidator. Che palle!
+import sentinelManifest from "./sentinel-manifest.json";
 
 const replacer = (k, v) => typeof v === 'bigint' ? v.toString() : v;
 
@@ -31,15 +33,24 @@ export default class Graphinator {
         console.log(`(Graphinator) depositConsumedPctThreshold: ${this.depositConsumedPctThreshold}`);
         this.wallet = new ethers.Wallet(__privateKey, this.provider);
 
-        this.batchContractAddr = metadata.getNetworkByName(network)?.contractsV1?.batchLiquidator;
-        if (this.batchContractAddr === undefined) {
-            throw new Error(`Batch liquidator contract address not found for network ${network}`);
-        }
-        this.batchContract = new ethers.Contract(this.batchContractAddr, BatchContract, this.wallet);
+        // this.batchContractAddr = metadata.getNetworkByName(network)?.contractsV1?.batchLiquidator;
+        // if (this.batchContractAddr === undefined) {
+        //     throw new Error(`Batch liquidator contract address not found for network ${network}`);
+        // }
+        // this.batchContract = new ethers.Contract(this.batchContractAddr, BatchContract, this.wallet);
         this.gdaForwarder = new ethers.Contract('0x6DA13Bde224A05a288748d857b9e7DDEffd1dE08', GDAv1Forwarder, this.wallet);
     }
 
     async runLiquidations(batchSize:number, gasMultiplier:number): Promise<any> {
+        // TODO: this should be in init. But we can't use await there.
+        const cid = (await this.provider.getNetwork()).chainId;
+        this.batchContractAddr = sentinelManifest.networks[cid]?.batch_contract;
+        if (this.batchContractAddr === undefined) {
+            throw new Error(`Batch liquidator contract address not found for network ${network}`);
+        }
+        console.log(`(Graphinator) chainId: ${cid}, batchContractAddr: ${this.batchContractAddr}`);
+        this.batchContract = new ethers.Contract(this.batchContractAddr, BatchContract, this.wallet);
+
         try {
             const accounts = await this.subgraph.getCriticalPairs(ISuperToken, this.token, this.gdaForwarder, this.depositConsumedPctThreshold);
             if (accounts.length === 0) {
@@ -122,7 +133,8 @@ export default class Graphinator {
                     receiver: liquidationParams[i].receiver
                 })
             }
-            const tx = this.batchContract.interface.encodeFunctionData('deleteFlows', [superToken, structParams]);
+            // TODO: terrible hack to take the token from the chunk
+            const tx = this.batchContract.interface.encodeFunctionData('deleteFlows', [liquidationParams[0].token, structParams]);
             return { tx: tx, target: await this.batchContract.getAddress() };
         } catch (error) {
             throw error;
