@@ -3,6 +3,7 @@ import SubGraphReader from "./subgraph.ts";
 const ISuperToken = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/interfaces/superfluid/ISuperToken.sol/ISuperToken.json").abi;
 const BatchContract = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/BatchLiquidator.sol/BatchLiquidator.json").abi;
 const GDAv1Forwarder = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/GDAv1Forwarder.sol/GDAv1Forwarder.json").abi;
+import metadata from "@superfluid-finance/metadata";
 
 const replacer = (k, v) => typeof v === 'bigint' ? v.toString() : v;
 
@@ -29,7 +30,12 @@ export default class Graphinator {
             : 20;
         console.log(`(Graphinator) depositConsumedPctThreshold: ${this.depositConsumedPctThreshold}`);
         this.wallet = new ethers.Wallet(__privateKey, this.provider);
-        this.batchContract = new ethers.Contract('0x6b008BAc0e5846cB5d9Ca02ca0e801fCbF88B6f9', BatchContract, this.wallet);
+
+        this.batchContractAddr = metadata.getNetworkByName(network)?.contractsV1?.batchLiquidator;
+        if (this.batchContractAddr === undefined) {
+            throw new Error(`Batch liquidator contract address not found for network ${network}`);
+        }
+        this.batchContract = new ethers.Contract(this.batchContractAddr, BatchContract, this.wallet);
         this.gdaForwarder = new ethers.Contract('0x6DA13Bde224A05a288748d857b9e7DDEffd1dE08', GDAv1Forwarder, this.wallet);
     }
 
