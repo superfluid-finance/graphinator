@@ -91,6 +91,11 @@
     "11155420": {
       "name": "Optimism Sepolia Testnet",
       "network_type": "evm-l2"
+    },
+    "666666666": {
+      "name": "Degenchain",
+      "network_type": "evm-l2",
+      "batch_contract": "0x7BCE8e8401dc98E3Da26F1D701c3C2168b8e466c"
     }
   }
 }
