@@ -86,7 +86,8 @@
     "534352": {
       "name": "Scroll",
       "network_type": "evm-l2",
-      "cid": "QmfMKdvQagt9EJNx7rRy8XY3PyhAdcgyettpDMuAdYSF5q"
+      "cid": "QmfMKdvQagt9EJNx7rRy8XY3PyhAdcgyettpDMuAdYSF5q",
+      "batch_contract": "0x3024A39099D4FAE7c9eA8329FAfe05576AEd2c00"
     },
     "11155420": {
       "name": "Optimism Sepolia Testnet",
