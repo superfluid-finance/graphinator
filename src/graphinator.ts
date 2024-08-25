@@ -1,10 +1,9 @@
-import {type AddressLike, ethers} from "ethers";
-import RPC, {ContractManager} from "./rpc.ts";
-import type SubGraphReader from "./subgraph.ts";
-import type { Pair } from "./subgraph.ts";
-
+import { ethers } from "ethers";
+import SubGraphReader from "./subgraph.ts";
+const ISuperToken = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/interfaces/superfluid/ISuperToken.sol/ISuperToken.json").abi;
+const BatchContract = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/BatchLiquidator.sol/BatchLiquidator.json").abi;
+const GDAv1Forwarder = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/GDAv1Forwarder.sol/GDAv1Forwarder.json").abi;  
 const sentinelManifest = require("./sentinel-manifest.json");
-console.log(sentinelManifest);
 
 const replacer = (key: string, value: any) => (typeof value === 'bigint' ? value.toString() : value);
 
