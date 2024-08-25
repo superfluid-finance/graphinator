@@ -4,7 +4,8 @@ const ISuperToken = require("@superfluid-finance/ethereum-contracts/build/hardha
 const BatchContract = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/BatchLiquidator.sol/BatchLiquidator.json").abi;
 const GDAv1Forwarder = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/GDAv1Forwarder.sol/GDAv1Forwarder.json").abi;
 
-import sentinelManifest from "./sentinel-manifest.json";
+const sentinelManifest = require("./sentinel-manifest.json");
+console.log(sentinelManifest);
 
 const replacer = (key: string, value: any) => (typeof value === 'bigint' ? value.toString() : value);
 
@@ -62,6 +63,7 @@ export default class Graphinator {
 
     private async initializeBatchContract(): Promise<void> {
         const chainId: string = (await this.provider.getNetwork()).chainId.toString();
+        // @ts-ignore
         this.batchContractAddr = sentinelManifest.networks[chainId]?.batch_contract;
         if (!this.batchContractAddr) {
             throw new Error(`Batch liquidator contract address not found for network ${chainId}`);
