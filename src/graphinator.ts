@@ -3,7 +3,8 @@ import RPC, {ContractManager} from "./rpc.ts";
 import type SubGraphReader from "./subgraph.ts";
 import type { Pair } from "./subgraph.ts";
 
-import sentinelManifest from "./sentinel-manifest.json";
+const sentinelManifest = require("./sentinel-manifest.json");
+console.log(sentinelManifest);
 
 const replacer = (key: string, value: any) => (typeof value === 'bigint' ? value.toString() : value);
 
@@ -77,6 +78,7 @@ export default class Graphinator {
 
     private async initializeBatchContract(): Promise<void> {
         const chainId: string = (await this.provider.getNetwork()).chainId.toString();
+        // @ts-ignore
         this.batchContractAddr = sentinelManifest.networks[chainId]?.batch_contract;
         if (!this.batchContractAddr) {
             throw new Error(`Batch liquidator contract address not found for network ${chainId}`);
