@@ -39,7 +39,7 @@ Fast run:
 ### Options
 
 - `--network`: The network to use. Defaults to `base-mainnet`.
-- `--token`: The token to liquidate. This is a required option.
+- `--token`: The token to liquidate.
 - `--batchSize`: The number of accounts to liquidate in each batch. Defaults to `15`.
 - `--gasMultiplier`: A multiplier to apply to the estimated gas cost for each transaction. Defaults to `1.2`.
 - `--loop`: If set, the script will run indefinitely, checking for new accounts to liquidate every 15min.

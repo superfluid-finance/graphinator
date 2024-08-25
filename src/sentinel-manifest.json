@@ -5,7 +5,6 @@
     "1": {
       "name": "Ethereum",
       "network_type": "evm",
-      "cid": "QmXTaEcw7sg72SYQP1g5obw3zC5YTHktPAyQCxt5VuWmCJ"
     },
     "5": {
       "name": "Goerli Testnet",
@@ -15,7 +14,6 @@
       "name": "Optimism",
       "network_type": "evm-l2",
       "batch_contract": "0x84956C84c33c38AcE22C9324F1f92028AF2215ce",
-      "cid": "QmXS83mPhBuyPXQcX7ivfHeZ4BoNddMcHVySatUdU9TjWv"
     },
     "56": {
       "name": "Binance Smart Chain",
@@ -27,13 +25,11 @@
       "name": "Gnosis Chain",
       "network_type": "evm",
       "batch_contract": "0x96C3C2d23d143301cF363a02cB7fe3596d2834d7",
-      "cid": "QmTZ5XhAvKsJ8XW14hMKikKkpHFu1sxA5Cgi7zDpxo9Xub"
     },
     "137": {
       "name": "Polygon",
       "network_type": "evm",
       "batch_contract": "0xA7afDc46999076C295cfC6812dd73d103cF64e19",
-      "cid": "Qmch2Bn1tdZ8JCA3Ss3EohyEMGqVK2JCq1zALHz3i9PMrs"
     },
     "420": {
       "name": "Optimism Goerli Testnet",
@@ -48,18 +44,15 @@
       "name": "Arbitrum One",
       "network_type": "evm-l2",
       "batch_contract": "0x9224413b9177E6c1D5721B4a4D1D00eC84B07Ce7",
-      "cid": "QmZ1WE2iBBj8WoSgPQmvMyPPuyR8pErhnvgNuqUuwWCjkX"
     },
     "42220": {
       "name": "Celo",
       "network_type": "evm",
       "batch_contract": "0xCb0Ff4D0cA186f0Fc0301258066Fe3fA258417a6",
-      "cid": "QmewQVkxGLTcCLx6zuP4Q5q9QEywuzgoMLhKQANPSVaq2R"
     },
     "43113": {
       "name": "Avalanche Fuji Testnet",
       "network_type": "evm",
-      "cid": "QmWbR31s7dkZ3zoVGCMKm8nZxdgupdT45sUmRhXhj4CvCU"
     },
     "43114": {
       "name": "Avalanche C-Chain",
@@ -86,7 +79,6 @@
     "534352": {
       "name": "Scroll",
       "network_type": "evm-l2",
-      "cid": "QmfMKdvQagt9EJNx7rRy8XY3PyhAdcgyettpDMuAdYSF5q",
       "batch_contract": "0x3024A39099D4FAE7c9eA8329FAfe05576AEd2c00"
     },
     "11155420": {

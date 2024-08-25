@@ -135,6 +135,24 @@ class Subgraph {
             i => i
         );
     }
+
+    async getTokens(isListed: boolean): Promise<any[]> {
+        return this.queryAllPages(
+            (lastId: string) => `{
+                tokens(first: ${MAX_ITEMS}, where: {id_gt: "${lastId}", isListed: ${isListed}}) {
+                     decimals
+                    isListed
+                    isNativeAssetSuperToken
+                    isSuperToken
+                    name
+                    symbol
+                    id
+                }
+            }`,
+            res => res.data.data.tokens,
+            i => i
+        );
+    }
 }
 
 class SubGraphReader {
@@ -243,6 +261,10 @@ class SubGraphReader {
         // sort by flowrate descending
         // TODO: this doesn't make much sense anymore in multi-token mode
         return returnData.sort((a, b) => Number(b.flowrate - a.flowrate));
+    }
+
+    async getAllTokens(isListed: boolean): Promise<any[]> {
+        return this.subgraph.getTokens(isListed)
     }
 }
 

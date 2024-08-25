@@ -30,7 +30,7 @@ const argv = await yargs(hideBin(process.argv))
         alias: 't',
         type: 'string',
         description: 'Set the token to liquidate',
-        demandOption: true
+        default: undefined
     })
     .option('loop', {
         alias: 'l',
@@ -40,11 +40,11 @@ const argv = await yargs(hideBin(process.argv))
     })
     .parse();
 
-const runAgainIn = 15 * 60 * 1000;
+const runAgainIn = 30000//15 * 60 * 1000;
 const network = argv.network;
 const batchSize = argv.batchSize;
 const gasMultiplier = argv.gasMultiplier;
-const token = argv.token.toLowerCase();
+const token = argv.token;
 const loop = argv.loop;
 
 if (network === undefined) {
