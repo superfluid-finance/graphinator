@@ -7,6 +7,8 @@ import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import Graphinator from './src/graphinator';
 
+const log = (msg: string, lineDecorator="") => console.log(`${new Date().toISOString()} - ${lineDecorator} (Graphinator) ${msg}`);
+
 const argv = await yargs(hideBin(process.argv))
     .option('network', {
         alias: 'n',
@@ -38,6 +40,12 @@ const argv = await yargs(hideBin(process.argv))
         description: 'Set to true to loop forever, false to run once',
         default: false
     })
+    .option('maxGasPrice', {
+        alias: 'm',
+        type: 'number',
+        description: 'Set the max gas price',
+        default: 500000000
+    })
     .parse();
 
 const runAgainIn = 30000//15 * 60 * 1000;
@@ -46,20 +54,24 @@ const batchSize = argv.batchSize;
 const gasMultiplier = argv.gasMultiplier;
 const token = argv.token;
 const loop = argv.loop;
+const maxGasPrice = BigInt(argv.maxGasPrice);
+
 
 if (network === undefined) {
     // TODO: probably not a valid code path
     dotenv.config();
 } else {
     dotenv.config({ path: path.resolve(__dirname, `.env_${network}`) });
-}
 
-const ghr = new Graphinator(network, token);
+
+const ghr = new Graphinator(network, config);
 if(loop) {
+
     const executeLiquidations = async () => {
         console.log(`running`);
+
         try {
-            await ghr.runLiquidations(batchSize, gasMultiplier);
+            await ghr.run(batchSize, gasMultiplier, maxGasPrice, BigInt(0));
         } catch (error) {
             console.error(error);
         } finally {
@@ -69,6 +81,7 @@ if(loop) {
     };
     executeLiquidations();
 } else {
+
     console.log(new Date().toISOString() + " - run liquidations...");
     await ghr.runLiquidations(batchSize, gasMultiplier);
 }

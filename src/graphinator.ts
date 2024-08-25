@@ -1,14 +1,29 @@
-import { ethers } from "ethers";
-import SubGraphReader from "./subgraph.ts";
-const ISuperToken = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/interfaces/superfluid/ISuperToken.sol/ISuperToken.json").abi;
-const BatchContract = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/BatchLiquidator.sol/BatchLiquidator.json").abi;
-const GDAv1Forwarder = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/GDAv1Forwarder.sol/GDAv1Forwarder.json").abi;
+import {type AddressLike, ethers} from "ethers";
+import RPC, {ContractManager} from "./rpc.ts";
+import type SubGraphReader from "./subgraph.ts";
+import type { Pair } from "./subgraph.ts";
 
 import sentinelManifest from "./sentinel-manifest.json";
 
 const replacer = (key: string, value: any) => (typeof value === 'bigint' ? value.toString() : value);
 
+type ContractConfig = {
+    batchContractAddress: string,
+    gdaForwarderAddress: string,
+    superTokenAddress: string
+}
+
+
+const log = (msg: string, lineDecorator="") => console.log(`${new Date().toISOString()} - ${lineDecorator} (Graphinator) ${msg}`);
+
+enum Priority {
+    HIGH,
+    NORMAL,
+    LOW
+}
+
 export default class Graphinator {
+
     private subgraph: SubGraphReader;
     private token?: string;
 
@@ -65,10 +80,12 @@ export default class Graphinator {
         this.batchContractAddr = sentinelManifest.networks[chainId]?.batch_contract;
         if (!this.batchContractAddr) {
             throw new Error(`Batch liquidator contract address not found for network ${chainId}`);
+
         }
         this.batchContract = new ethers.Contract(this.batchContractAddr, BatchContract, this.wallet);
         console.log(`(Graphinator) Initialized batch contract at ${this.batchContractAddr}`);
     }
+
 
     private async getTokensToLiquidate(): Promise<string[]> {
         if (!this.token) {

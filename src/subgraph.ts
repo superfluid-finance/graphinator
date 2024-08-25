@@ -1,6 +1,8 @@
 import axios, {type AxiosResponse } from 'axios';
-import {JsonRpcProvider, Contract} from "ethers";
+import {JsonRpcProvider, Contract, type AddressLike, type Interface, type InterfaceAbi} from "ethers";
+import {type ContractManager, SuperToken} from "./rpc.ts";
 
+const log = (msg: string, lineDecorator="") => console.log(`${new Date().toISOString()} - ${lineDecorator} (Graphinator) ${msg}`);
 const MAX_ITEMS = 1000;
 
 export type Pair = {
@@ -8,17 +10,22 @@ export type Pair = {
     sender: string,
     receiver: string,
     token: string,
-    flowrate: bigint
+    flowrate: bigint,
+    priority: number
 };
 
 class Subgraph {
     private subgraphUrl: string;
 
     constructor(url: string) {
+        if(!url) {
+            throw new Error("Subgraph URL not set");
+        }
         this.subgraphUrl = url;
     }
 
     async graphql(query: string, accept?: string): Promise<AxiosResponse<any>> {
+
         if (!this.subgraphUrl) {
             throw new Error("Subgraph URL not set");
         }
@@ -157,12 +164,15 @@ class Subgraph {
 
 class SubGraphReader {
     private subgraph: Subgraph;
-    private provider
+    private targetToken: SuperToken;
+    private gdaForwarder: Contract;
 
-    constructor(url: string, provider: JsonRpcProvider) {
+    constructor(url: string, contractManager: ContractManager) {
         this.subgraph = new Subgraph(url);
-        this.provider = provider;
+        this.targetToken = contractManager.getSuperTokenInstance();
+        this.gdaForwarder = contractManager.getGDAForwarderInstance();
     }
+
 
     async getCriticalPairs(superTokenABI: any, token: string, gdaForwarder: any, depositConsumedPctThreshold: number): Promise<Pair[]> {
 
