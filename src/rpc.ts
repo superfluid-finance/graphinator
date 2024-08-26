@@ -55,7 +55,7 @@ export default class RPC {
     }
 
     getSubgraphReader(subgraphUrl: string) {
-        return new SubGraphReader(subgraphUrl, this.contractManager);
+        return new SubGraphReader(subgraphUrl, this.provider);
     }
 
     getProvider() {
