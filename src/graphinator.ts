@@ -7,21 +7,6 @@ const sentinelManifest = require("./sentinel-manifest.json");
 
 const replacer = (key: string, value: any) => (typeof value === 'bigint' ? value.toString() : value);
 
-type ContractConfig = {
-    batchContractAddress: string,
-    gdaForwarderAddress: string,
-    superTokenAddress: string
-}
-
-
-const log = (msg: string, lineDecorator="") => console.log(`${new Date().toISOString()} - ${lineDecorator} (Graphinator) ${msg}`);
-
-enum Priority {
-    HIGH,
-    NORMAL,
-    LOW
-}
-
 export default class Graphinator {
 
     private subgraph: SubGraphReader;
@@ -33,6 +18,7 @@ export default class Graphinator {
     private gdaForwarder: ethers.Contract;
     private depositConsumedPctThreshold: number;
     private batchContractAddr: string = '';
+
 
     constructor(network: string, token?: string) {
         this.provider = new ethers.JsonRpcProvider(`https://${network}.rpc.x.superfluid.dev/`);
