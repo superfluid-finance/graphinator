@@ -1,5 +1,5 @@
 import axios, {type AxiosResponse } from 'axios';
-import {JsonRpcProvider, Contract, type AddressLike, type Interface, type InterfaceAbi} from "ethers";
+import {JsonRpcProvider, Contract, type AddressLike, type Interface, type InterfaceAbi, ethers} from "ethers";
 import {type ContractManager, SuperToken} from "./rpc.ts";
 
 const log = (msg: string, lineDecorator="") => console.log(`${new Date().toISOString()} - ${lineDecorator} (Graphinator) ${msg}`);
@@ -10,8 +10,7 @@ export type Pair = {
     sender: string,
     receiver: string,
     token: string,
-    flowrate: bigint,
-    priority: number
+    flowrate: bigint
 };
 
 class Subgraph {
@@ -164,13 +163,11 @@ class Subgraph {
 
 class SubGraphReader {
     private subgraph: Subgraph;
-    private targetToken: SuperToken;
-    private gdaForwarder: Contract;
+    private provider: ethers.JsonRpcProvider;
 
-    constructor(url: string, contractManager: ContractManager) {
+    constructor(url: string, provider: ethers.JsonRpcProvider) {
         this.subgraph = new Subgraph(url);
-        this.targetToken = contractManager.getSuperTokenInstance();
-        this.gdaForwarder = contractManager.getGDAForwarderInstance();
+        this.provider = provider;
     }
 
 
@@ -180,7 +177,6 @@ class SubGraphReader {
         const now = Math.floor(Date.now() / 1000);
         // gets all critical accounts in any superToken
         const criticalAccounts = await this.subgraph.getAccountsCriticalAt(now);
-        //const targetToken = new Contract(token, superTokenABI, this.provider);
 
         if (criticalAccounts.length !== 0) {
             for (const account of criticalAccounts) {
