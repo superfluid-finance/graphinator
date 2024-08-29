@@ -64,23 +64,20 @@ if (network === undefined) {
     dotenv.config({path: path.resolve(__dirname, `.env_${network}`)});
 }
 
-const ghr = new Graphinator(network, token);
+const ghr = new Graphinator(network);
 if(loop) {
     const executeLiquidations = async () => {
-        console.log(`running`);
-
         try {
-            await ghr.runLiquidations(batchSize, gasMultiplier);
+            await ghr.executeLiquidations(batchSize, gasMultiplier, token);
         } catch (error) {
             console.error(error);
         } finally {
-            console.log(`run again in ${runAgainIn}`);
+            log(`run again in ${runAgainIn}`);
             setTimeout(executeLiquidations, runAgainIn); // Schedule the next run
         }
     };
-    executeLiquidations();
+    await executeLiquidations();
 } else {
-
-    console.log(new Date().toISOString() + " - run liquidations...");
-    await ghr.runLiquidations(batchSize, gasMultiplier);
+    log(new Date().toISOString() + " - run liquidations...");
+    await ghr.executeLiquidations(batchSize, gasMultiplier, token);
 }

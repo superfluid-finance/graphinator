@@ -1,79 +1,116 @@
 import axios, {type AxiosResponse } from 'axios';
-import {JsonRpcProvider, Contract, type AddressLike, type Interface, type InterfaceAbi, ethers} from "ethers";
-import {type ContractManager, SuperToken} from "./rpc.ts";
+import {Contract, type AddressLike, JsonRpcProvider, ethers} from "ethers";
+import type {CriticalAccount, Pair} from "./types/types.ts";
+const ISuperTokenAbi = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/interfaces/superfluid/ISuperToken.sol/ISuperToken.json").abi;
 
 const log = (msg: string, lineDecorator="") => console.log(`${new Date().toISOString()} - ${lineDecorator} (Graphinator) ${msg}`);
 const MAX_ITEMS = 1000;
+const ZERO = BigInt(0);
 
-export type Pair = {
-    source: string,
-    sender: string,
-    receiver: string,
-    token: string,
-    flowrate: bigint
-};
 
-class Subgraph {
+class SubGraphReader {
+
     private subgraphUrl: string;
+    private provider: JsonRpcProvider;
 
-    constructor(url: string) {
+    constructor(url: string, provider: JsonRpcProvider) {
         if(!url) {
             throw new Error("Subgraph URL not set");
         }
         this.subgraphUrl = url;
+        this.provider = provider;
     }
 
-    async graphql(query: string, accept?: string): Promise<AxiosResponse<any>> {
+    // @TODO: refactor, we are mixing two concepts here get critical accounts with subgraph data
+    async getCriticalPairs(token: AddressLike, gdaForwarder: Contract, depositConsumedPctThreshold: number): Promise<Pair[]> {
 
-        if (!this.subgraphUrl) {
-            throw new Error("Subgraph URL not set");
-        }
+        const returnData: Pair[] = [];
+        const criticalAccounts = await this.getCriticalAccountsByTokenNow(token);
+        const targetToken = new Contract(token.toString(), ISuperTokenAbi, this.provider);
 
-        const headers = {
-            //"Authorization": `bearer ${process.env.GITHUB_TOKEN}`,
-            //"Accept": accept ? accept : "application/vnd.github.v3+json",
-        };
+        if (criticalAccounts.length > 0) {
+            for (const account of criticalAccounts) {
 
-        return await axios.post(this.subgraphUrl, {query}, {headers});
-    }
+                console.log("? Probing ", account.account.id, "token", account.token.id, "net fr", account.totalNetFlowRate, "cfa net fr", account.totalCFANetFlowRate, "gda net fr", await gdaForwarder.getNetFlow(account.token.id, account.account.id));
+                const rtb = await targetToken.realtimeBalanceOfNow(account.account.id);
+                const { availableBalance, deposit } = rtb;
+                if (availableBalance < 0) { // critical or insolvent
+                    const consumedDepositPercentage = -Number(availableBalance * 100n / deposit);
+                    if (consumedDepositPercentage < depositConsumedPctThreshold) {
+                        continue;
+                    }
 
-    async queryAllPages(queryFn: (lastId: string) => string, toItems: (res: AxiosResponse<any>) => any[], itemFn: (item: any) => any): Promise<any[]> {
-        let lastId = "";
-        const items: any[] = [];
+                    const cfaNetFlowRate = BigInt(account.totalCFANetFlowRate);
+                    const gdaNetFlowRate = await gdaForwarder.getNetFlow(account.token.id, account.account.id);
+                    let netFlowRate = cfaNetFlowRate + gdaNetFlowRate;
+                    if (netFlowRate >= ZERO) {
+                        continue;
+                    }
+                    console.log("3! Critical", account.account.id, "token", account.token.id, "net fr", netFlowRate, "(cfa", cfaNetFlowRate, "gda", gdaNetFlowRate, ")");
 
-        while (true) {
-            const res = await this.graphql(queryFn(lastId));
+                    const cfaFlows = await this.getOutgoingFlowsFromAccountByToken(account.token.id, account.account.id);
+                    let processedCFAFlows = 0;
+                    for (const flow of cfaFlows) {
+                        const data = flow.id.split("-");
+                        returnData.push({
+                            source: "CFA",
+                            sender: data[0],
+                            receiver: data[1],
+                            token: data[2],
+                            flowrate: BigInt(flow.currentFlowRate)
+                        });
+                        netFlowRate += BigInt(flow.currentFlowRate);
+                        processedCFAFlows++;
+                        if (netFlowRate >= ZERO) {
+                            break;
+                        }
+                    }
 
-            if (res.status !== 200 || res.data.errors) {
-                console.error(`bad response ${res.status}`);
-                //process.exit(2);
-            } else if (res.data === "") {
-                console.error("empty response data");
-            } else {
-                const newItems = toItems(res);
-                items.push(...newItems.map(itemFn));
+                    const gdaFlows = await this.getAllFlowDistributions(account.token.id, account.account.id);
+                    let processedGDAFlows = 0;
+                    for (const flow of gdaFlows) {
+                        const data = flow.id.split("-");
+                        const pool = data[1];
+                        returnData.push({
+                            source: "GDA",
+                            sender: account.account.id,
+                            receiver: pool,
+                            token: account.token.id,
+                            flowrate: BigInt(flow.pool.flowRate)
+                        });
+                        netFlowRate += BigInt(flow.pool.flowRate);
+                        processedGDAFlows++;
+                        if (netFlowRate >= BigInt(0)) {
+                            break;
+                        }
+                    }
 
-                if (newItems.length < MAX_ITEMS) {
-                    break;
-                } else {
-                    lastId = newItems[newItems.length - 1].id;
+                    console.log(`  available balance ${availableBalance}, deposit ${deposit}, consumed deposit ${consumedDepositPercentage}%, flows to-be-liquidated/total: ${processedCFAFlows}/${cfaFlows.length} cfa | ${processedGDAFlows}/${gdaFlows.length} gda`);
+                    if (processedCFAFlows > 0 || processedGDAFlows > 0) {
+                        continue;
+                    } else {
+                        console.log("!!!  no cfa|gda outflows to liquidate");
+                    }
                 }
             }
         }
-
-        return items;
+        return returnData.sort((a, b) => Number(b.flowrate - a.flowrate));
     }
 
-    async getAllOutFlows(token: string, account: string): Promise<any[]> {
-        // TODO: order change broke pagination. We don't really need pagination here though
-        return this.queryAllPages(
+    async getOutgoingFlowsFromAccountByToken(token: AddressLike, account: AddressLike): Promise<any[]> {
+        const _accountLowerCase = account.toString().toLowerCase();
+        console.log("_accountLowerCase", _accountLowerCase);
+
+        const _tokenLowerCase = token.toString().toLowerCase();
+        console.log("_tokenLowerCase", _tokenLowerCase);
+        return this._queryAllPages(
             (lastId: string) => `{
-                account(id: "${account}") {
+                account(id: "${_accountLowerCase}") {
                     outflows(
                         orderBy: currentFlowRate,
                         orderDirection: desc,
                         where: {
-                            token: "${token}",
+                            token: "${_tokenLowerCase}",
                             id_gt: "${lastId}",
                             currentFlowRate_not: "0",
                     }) {
@@ -87,10 +124,12 @@ class Subgraph {
         );
     }
 
-    async getAllFlowDistributions(token: string, account: string): Promise<any[]> {
-        return this.queryAllPages(
+    async getAllFlowDistributions(token: AddressLike, account: AddressLike): Promise<any[]> {
+        const _accountLowerCase = account.toString().toLowerCase();
+        const _tokenLowerCase = token.toString().toLowerCase();
+        return this._queryAllPages(
             (lastId: string) => `{
-                poolDistributors(where: {account: "${account}", id_gt: "${lastId}", pool_: {token: "${token}"}, flowRate_gt: "0"}) {
+                poolDistributors(where: {account: "${_accountLowerCase}", id_gt: "${lastId}", pool_: {token: "${_tokenLowerCase}"}, flowRate_gt: "0"}) {
                     id
                     pool {
                         id
@@ -103,8 +142,50 @@ class Subgraph {
         );
     }
 
-    async getAccountsCriticalAt(timestamp: number): Promise<any[]> {
-        return this.queryAllPages(
+    async getCriticalAccountsByTokenNow(token: AddressLike): Promise<CriticalAccount[]> {
+        const _tokenLowerCase = token.toString().toLowerCase();
+        const timestamp = Math.floor(Date.now() / 1000);
+        return this._queryAllPages(
+            (lastId: string) => `{
+                accountTokenSnapshots (first: ${MAX_ITEMS},
+                    where: {
+                        id_gt: "${lastId}",
+                        totalNetFlowRate_lt: 0,
+                         maybeCriticalAtTimestamp_lt: ${timestamp}
+                        token: "${_tokenLowerCase}"
+                    }
+                ) {
+                    id
+                    balanceUntilUpdatedAt
+                    maybeCriticalAtTimestamp
+                    isLiquidationEstimateOptimistic
+                    activeIncomingStreamCount
+                    activeOutgoingStreamCount
+                    activeGDAOutgoingStreamCount
+                    activeCFAOutgoingStreamCount
+                    totalInflowRate
+                    totalOutflowRate
+                    totalNetFlowRate
+                    totalCFAOutflowRate
+                    totalCFANetFlowRate
+                    totalGDAOutflowRate
+                    totalDeposit
+                    token {
+                        id
+                        symbol
+                    }
+                    account {
+                        id
+                    }
+                }
+            }`,
+            res => res.data.data.accountTokenSnapshots,
+            i => i
+        );
+    }
+
+    async getCriticalAccountsAt(timestamp: number): Promise<CriticalAccount[]> {
+        return this._queryAllPages(
             (lastId: string) => `{
                 accountTokenSnapshots (first: ${MAX_ITEMS},
                     where: {
@@ -142,11 +223,10 @@ class Subgraph {
         );
     }
 
-    async getTokens(isListed: boolean): Promise<any[]> {
-        return this.queryAllPages(
+    async getSuperTokens(isListed: boolean = true): Promise<any[]> {
+        return this._queryAllPages(
             (lastId: string) => `{
                 tokens(first: ${MAX_ITEMS}, where: {id_gt: "${lastId}", isListed: ${isListed}}) {
-                     decimals
                     isListed
                     isNativeAssetSuperToken
                     isSuperToken
@@ -159,118 +239,47 @@ class Subgraph {
             i => i
         );
     }
-}
 
-class SubGraphReader {
-    private subgraph: Subgraph;
-    private provider: ethers.JsonRpcProvider;
+    /// Subgraph methods
+    private async _graphql(query: string, accept?: string): Promise<AxiosResponse<any>> {
 
-    constructor(url: string, provider: ethers.JsonRpcProvider) {
-        this.subgraph = new Subgraph(url);
-        this.provider = provider;
+        if (!this.subgraphUrl) {
+            throw new Error("Subgraph URL not set");
+        }
+
+        const headers = {
+            //"Authorization": `bearer ${process.env.GITHUB_TOKEN}`,
+            //"Accept": accept ? accept : "application/vnd.github.v3+json",
+        };
+
+        return await axios.post(this.subgraphUrl, {query}, {headers});
     }
 
+    private async _queryAllPages(queryFn: (lastId: string) => string, toItems: (res: AxiosResponse<any>) => any[], itemFn: (item: any) => any): Promise<any[]> {
+        let lastId = "";
+        const items: any[] = [];
 
-    async getCriticalPairs(superTokenABI: any, token: string, gdaForwarder: any, depositConsumedPctThreshold: number): Promise<Pair[]> {
+        while (true) {
+            const res = await this._graphql(queryFn(lastId));
 
-        const returnData: Pair[] = [];
-        const now = Math.floor(Date.now() / 1000);
-        // gets all critical accounts in any superToken
-        const criticalAccounts = await this.subgraph.getAccountsCriticalAt(now);
+            if (res.status !== 200 || res.data.errors) {
+                console.error(`bad response ${res.status}`);
+                //process.exit(2);
+            } else if (res.data === "") {
+                console.error("empty response data");
+            } else {
+                const newItems = toItems(res);
+                items.push(...newItems.map(itemFn));
 
-        if (criticalAccounts.length !== 0) {
-            for (const account of criticalAccounts) {
-                // TODO: make less hacky
-                if (token !== "0x0000000000000000000000000000000000000000") {
-                    if (account.token.id.toLowerCase() !== token.toLowerCase()) {
-                        continue;
-                    }
-                }
-
-                console.log("? Probing ", account.account.id, "token", account.token.id, "net fr", account.totalNetFlowRate, "cfa net fr", account.totalCFANetFlowRate, "gda net fr", await gdaForwarder.getNetFlow(account.token.id, account.account.id));
-                const targetToken = new Contract(account.token.id, superTokenABI, this.provider);
-
-                const rtb = await targetToken.realtimeBalanceOfNow(account.account.id);
-                let { availableBalance, deposit } = rtb;
-                if (availableBalance < 0) { // critical or insolvent
-                    //console.log("  available balance", availableBalance, "deposit", deposit);
-                    const consumedDepositPercentage = -Number(availableBalance * 100n / deposit); //Math.max(0, Math.min(100, Math.round(-Number(availableBalance) / Number(deposit) * 100)));
-                    //console.log("  consumed deposit", consumedDepositPercentage, "%");
-
-                    if (consumedDepositPercentage < depositConsumedPctThreshold) {
-                        //console.log(`  deposit consumed percentage ${consumedDepositPercentage} < ${depositConsumedPctThreshold}, skipping`);
-                        continue;
-                    }
-
-                    const cfaNetFlowRate = BigInt(account.totalCFANetFlowRate);
-                    const gdaNetFlowRate = await gdaForwarder.getNetFlow(account.token.id, account.account.id);
-                    let netFlowRate = cfaNetFlowRate + gdaNetFlowRate;
-                    if (netFlowRate >= BigInt(0)) {
-                        //console.log(`account ${account.account.id} net fr is ${netFlowRate}, skipping`);
-                        continue;
-                    }
-                    console.log("! Critical", account.account.id, "token", account.token.id, "net fr", netFlowRate, "(cfa", cfaNetFlowRate, "gda", gdaNetFlowRate, ")");
-
-                    //console.log("nr cfa in", account.activeIncomingStreamCount, "nr cfa out", account.activeCFAOutgoingStreamCount, "nr gda out", account.activeGDAOutgoingStreamCount);
-                    const cfaFlows = await this.subgraph.getAllOutFlows(account.token.id, account.account.id);
-                    const nrCFAFlows = cfaFlows.length;
-                    let processedCFAFlows = 0;
-                    for (const flow of cfaFlows) {
-                        const data = flow.id.split("-");
-                        returnData.push({
-                            source: "CFA",
-                            sender: data[0],
-                            receiver: data[1],
-                            token: data[2],
-                            flowrate: BigInt(flow.currentFlowRate)
-                        });
-                        netFlowRate += BigInt(flow.currentFlowRate);
-                        //console.log(`CFA flow: ${data[0]} -> ${data[1]}: ${flow.currentFlowRate} - projected acc net flow rate now: ${netFlowRate}`);
-                        processedCFAFlows++;
-                        if (netFlowRate >= BigInt(0)) {
-                            break;
-                        }
-                    }
-
-                    const gdaFlows = await this.subgraph.getAllFlowDistributions(account.token.id, account.account.id);
-                    const nrGDAFlows = gdaFlows.length;
-                    let processedGDAFlows = 0;
-                    for (const flow of gdaFlows) {
-                        const data = flow.id.split("-");
-                        const pool = data[1];
-                        console.log("pool: ", pool);
-                        returnData.push({
-                            source: "GDA",
-                            sender: account.account.id,
-                            receiver: pool,
-                            token: account.token.id,
-                            flowrate: BigInt(flow.pool.flowRate)
-                        });
-                        netFlowRate += BigInt(flow.pool.flowRate);
-                        processedGDAFlows++;
-                        if (netFlowRate >= BigInt(0)) {
-                            break;
-                        }
-                    }
-
-                    //console.log("  available balance", availableBalance, "deposit", deposit, "consumed deposit", consumedDepositPercentage, "%", nrCFAFlows, "cfa outflows", nrGDAFlows, "gda outflows", processedCFAFlows, "of", nrCFAFlows, "| ", processedGDAFlows, "of", nrGDAFlows, "to be liquidated");
-                    console.log(`  available balance ${availableBalance}, deposit ${deposit}, consumed deposit ${consumedDepositPercentage}%, flows to-be-liquidated/total: ${processedCFAFlows}/${nrCFAFlows} cfa | ${processedGDAFlows}/${nrGDAFlows} gda`);
-                    if (processedCFAFlows > 0 || processedGDAFlows > 0) {
-                        //console.log(`  net fr projected to become positive with ${processedCFAFlows} of ${nrCFAFlows} liquidated`);
-                    } else {
-                        console.log("!!!  no cfa|gda outflows to liquidate");
-                    }
+                if (newItems.length < MAX_ITEMS) {
+                    break;
+                } else {
+                    lastId = newItems[newItems.length - 1].id;
                 }
             }
         }
 
-        // sort by flowrate descending
-        // TODO: this doesn't make much sense anymore in multi-token mode
-        return returnData.sort((a, b) => Number(b.flowrate - a.flowrate));
-    }
-
-    async getAllTokens(isListed: boolean): Promise<any[]> {
-        return this.subgraph.getTokens(isListed)
+        return items;
     }
 }
 
