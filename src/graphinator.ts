@@ -1,16 +1,14 @@
 import {type AddressLike, ethers, type TransactionLike} from "ethers";
-import SubGraphReader from "./subgraph.ts";
+import Subgraph from "./subgraph.ts";
+import type {LiquidationParams, Pair} from "./types/types.ts";
 
 const BatchContract = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/BatchLiquidator.sol/BatchLiquidator.json").abi;
 const GDAv1Forwarder = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/utils/GDAv1Forwarder.sol/GDAv1Forwarder.json").abi;  
 const sentinelManifest = require("./sentinel-manifest.json");
 
-const replacer = (key: string, value: any) => (typeof value === 'bigint' ? value.toString() : value);
-
 export default class Graphinator {
 
-    private subgraph: SubGraphReader;
-
+    private subgraph: Subgraph;
     private provider: ethers.JsonRpcProvider;
     private wallet: ethers.Wallet;
     private batchContract?: ethers.Contract;
@@ -18,22 +16,22 @@ export default class Graphinator {
 
     constructor(network: string) {
         this.provider = new ethers.JsonRpcProvider(`https://${network}.rpc.x.superfluid.dev/`);
-        this.subgraph = new SubGraphReader(`https://${network}.subgraph.x.superfluid.dev`, this.provider);
+        this.subgraph = new Subgraph(`https://${network}.subgraph.x.superfluid.dev`, this.provider);
         this.wallet = new ethers.Wallet(this._getPrivateKey(), this.provider);
         // TODO: Refactor to use sentinel manifest
         this.gdaForwarder = new ethers.Contract('0x6DA13Bde224A05a288748d857b9e7DDEffd1dE08', GDAv1Forwarder, this.wallet);
         console.log(`(Graphinator) Initialized wallet: ${this.wallet.address}`);
     }
 
-    async executeLiquidations(batchSize: number, gasMultiplier: number, token?: AddressLike): Promise<void> {
+    async executeLiquidations(batchSize: number, gasMultiplier: number, maxGasPrice: number, token?: AddressLike): Promise<void> {
         try {
             await this._initializeBatchContract();
             if(token) {
-                await this._liquidateToken(token, batchSize, gasMultiplier);
+                await this._liquidateToken(token, batchSize, gasMultiplier, maxGasPrice);
             } else {
                 const tokens = await this._getSuperTokens();
                 for (const token of tokens) {
-                    await this._liquidateToken(token, batchSize, gasMultiplier);
+                    await this._liquidateToken(token, batchSize, gasMultiplier, maxGasPrice);
                 }
             }
         } catch (error) {
@@ -71,14 +69,14 @@ export default class Graphinator {
             return tokens.map(token => token.id);
     }
 
-    private async _liquidateToken(tokenAddr: AddressLike, batchSize: number, gasMultiplier: number): Promise<void> {
+    private async _liquidateToken(tokenAddr: AddressLike, batchSize: number, gasMultiplier: number, maxGasPrice: number): Promise<void> {
         const accounts = await this.subgraph.getCriticalPairs(tokenAddr, this.gdaForwarder, this._getDepositConsumedPctThreshold());
         if (accounts.length > 0) {
             console.log(`Found ${accounts.length} streams to liquidate`);
             const accountChunks = this._chunkArray(accounts, batchSize);
 
             for (const chunk of accountChunks) {
-                await this._processChunk(tokenAddr, chunk, gasMultiplier);
+                await this._processChunk(tokenAddr, chunk, gasMultiplier, maxGasPrice);
             }
         } else {
             console.log(`(Graphinator) No streams to liquidate for token: ${tokenAddr}`);
@@ -94,10 +92,14 @@ export default class Graphinator {
         return chunks;
     }
 
-    private async _processChunk(token: AddressLike, chunk: any[], gasMultiplier: number): Promise<void> {
+    private async _processChunk(token: AddressLike, chunk: LiquidationParams[], gasMultiplier: number, maxGasPrice: number): Promise<void> {
         try {
             const txData = await this._generateBatchLiquidationTxData(token, chunk);
             const gasLimit = await this._estimateGasLimit(txData, gasMultiplier);
+            if(gasLimit > maxGasPrice) {
+                console.log(`(Graphinator) Gas limit ${gasLimit} too high, skipping transaction`);
+                return;
+            }
             await this._sendTransaction(txData, gasLimit);
         } catch (error) {
             console.error(`(Graphinator) Error processing chunk: ${error}`);
@@ -138,6 +140,7 @@ export default class Graphinator {
             };
 
             if (process.env.DRY_RUN) {
+                const replacer = (key: string, value: any) => (typeof value === 'bigint' ? value.toString() : value);
                 console.log(`(Graphinator) Dry run - tx: ${JSON.stringify(tx, replacer)}`);
             } else {
                 const signedTx = await this.wallet.signTransaction(tx);
@@ -154,45 +157,4 @@ export default class Graphinator {
     private async _sleep(ms: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
-
-    /*
-    async getPriority(criticalAccount: AddressLike, totalNetFlow: bigint, netFlowThreshold: bigint): Promise<number> {
-
-        const [rtb, isSolvent] = await Promise.all([
-                this.superToken.realtimeBalanceOfNow(criticalAccount),
-                this.superToken.isAccountSolventNow(criticalAccount)
-            ]);
-
-        let { availableBalance, deposit } = rtb;
-        availableBalance = -Number(availableBalance);
-        deposit = Number(deposit);
-
-        if (deposit === 0) {
-            throw new Error("Deposit is zero, can't calculate priority.");
-        }
-        const consumedDepositPercentage = Math.max(0, Math.min(100, Math.round(availableBalance / deposit * 100)));
-        const howFastIsConsuming = Math.abs(Number(totalNetFlow)) / Number(netFlowThreshold);
-
-        // baseline
-        let priority = 50n;
-        if (!isSolvent) {
-            priority += 20n;
-        }
-        if (howFastIsConsuming > 10) {
-            priority += 10n;
-        }
-        // adjusted to have linear growth and not a step function
-        if (totalNetFlow > 0n) {
-            priority += (20n * totalNetFlow) / netFlowThreshold;
-        }
-        // +1 is just to make sure it's not 0 and also to make it 1-100
-        const progressBarLength = 50;
-        const filledLength = Math.round(consumedDepositPercentage / 100 * progressBarLength);
-        const progressBar = '█'.repeat(filledLength) + '-'.repeat(progressBarLength - filledLength);
-        log(`acccount ${criticalAccount} deposit consumed: [${progressBar}] ${consumedDepositPercentage}%`, "⚖️");
-
-        const priorityNumber = Number(priority);
-        return Math.max(0, Math.min(100, priorityNumber));
-    }
-    */
 }
