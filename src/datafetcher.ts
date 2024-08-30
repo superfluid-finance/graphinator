@@ -1,30 +1,31 @@
 import axios, {type AxiosResponse } from 'axios';
 import {Contract, type AddressLike, JsonRpcProvider, ethers} from "ethers";
-import type {CriticalAccount, Pair} from "./types/types.ts";
+import type { CriticalAccount, Flow } from "./types/types.ts";
+import { AgreementType } from "./types/types.ts";
 const ISuperTokenAbi = require("@superfluid-finance/ethereum-contracts/build/hardhat/contracts/interfaces/superfluid/ISuperToken.sol/ISuperToken.json").abi;
 
 const log = (msg: string, lineDecorator="") => console.log(`${new Date().toISOString()} - ${lineDecorator} (Graphinator) ${msg}`);
 const MAX_ITEMS = 1000;
 const ZERO = BigInt(0);
 
-
-class Subgraph {
+// Fetches data using subgraph and rpc
+class DataFetcher {
 
     private subgraphUrl: string;
     private provider: JsonRpcProvider;
 
-    constructor(url: string, provider: JsonRpcProvider) {
-        if(!url) {
-            throw new Error("Subgraph URL not set");
+    constructor(subgraphUrl: string, provider: JsonRpcProvider) {
+        if(!subgraphUrl) {
+            throw new Error("subgraph URL not set");
         }
-        this.subgraphUrl = url;
+        this.subgraphUrl = subgraphUrl;
         this.provider = provider;
     }
 
     // @TODO: refactor, we are mixing two concepts here get critical accounts with subgraph data
-    async getCriticalPairs(token: AddressLike, gdaForwarder: Contract, depositConsumedPctThreshold: number): Promise<Pair[]> {
+    async getFlowsToLiquidate(token: AddressLike, gdaForwarder: Contract, depositConsumedPctThreshold: number): Promise<Flow[]> {
 
-        const returnData: Pair[] = [];
+        const returnData: Flow[] = [];
         const criticalAccounts = await this.getCriticalAccountsByTokenNow(token);
         const targetToken = new Contract(token.toString(), ISuperTokenAbi, this.provider);
 
@@ -52,7 +53,7 @@ class Subgraph {
                     for (const flow of cfaFlows) {
                         const data = flow.id.split("-");
                         returnData.push({
-                            source: "CFA",
+                            agreementType: AgreementType.CFA,
                             sender: data[0],
                             receiver: data[1],
                             token: data[2],
@@ -71,7 +72,7 @@ class Subgraph {
                         const data = flow.id.split("-");
                         const pool = data[1];
                         returnData.push({
-                            source: "GDA",
+                            agreementType: AgreementType.GDA,
                             sender: account.account.id,
                             receiver: pool,
                             token: account.token.id,
@@ -98,10 +99,7 @@ class Subgraph {
 
     async getOutgoingFlowsFromAccountByToken(token: AddressLike, account: AddressLike): Promise<any[]> {
         const _accountLowerCase = account.toString().toLowerCase();
-        console.log("_accountLowerCase", _accountLowerCase);
-
         const _tokenLowerCase = token.toString().toLowerCase();
-        console.log("_tokenLowerCase", _tokenLowerCase);
         return this._queryAllPages(
             (lastId: string) => `{
                 account(id: "${_accountLowerCase}") {
@@ -215,11 +213,11 @@ class Subgraph {
         );
     }
 
-    /// Subgraph methods
+    /// DataFetcher methods
     private async _graphql(query: string): Promise<AxiosResponse<any>> {
 
         if (!this.subgraphUrl) {
-            throw new Error("Subgraph URL not set");
+            throw new Error("DataFetcher URL not set");
         }
 
         const headers = {
@@ -258,4 +256,4 @@ class Subgraph {
     }
 }
 
-export default Subgraph;
+export default DataFetcher;

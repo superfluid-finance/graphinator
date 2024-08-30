@@ -1,9 +1,8 @@
 import type {AddressLike} from "ethers";
 
-export type LiquidationParams = {
-    source: string,
-    sender: AddressLike,
-    receiver: AddressLike
+export enum AgreementType {
+    CFA = 0,
+    GDA = 1
 }
 
 export type CriticalAccount = {
@@ -16,8 +15,8 @@ export type CriticalAccount = {
     }
 }
 
-export type Pair = {
-    source: string,
+export type Flow = {
+    agreementType: AgreementType,
     sender: AddressLike,
     receiver: AddressLike,
     token: AddressLike,
