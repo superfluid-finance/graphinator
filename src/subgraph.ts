@@ -8,7 +8,7 @@ const MAX_ITEMS = 1000;
 const ZERO = BigInt(0);
 
 
-class SubGraphReader {
+class Subgraph {
 
     private subgraphUrl: string;
     private provider: JsonRpcProvider;
@@ -30,7 +30,6 @@ class SubGraphReader {
 
         if (criticalAccounts.length > 0) {
             for (const account of criticalAccounts) {
-
                 console.log("? Probing ", account.account.id, "token", account.token.id, "net fr", account.totalNetFlowRate, "cfa net fr", account.totalCFANetFlowRate, "gda net fr", await gdaForwarder.getNetFlow(account.token.id, account.account.id));
                 const rtb = await targetToken.realtimeBalanceOfNow(account.account.id);
                 const { availableBalance, deposit } = rtb;
@@ -46,7 +45,7 @@ class SubGraphReader {
                     if (netFlowRate >= ZERO) {
                         continue;
                     }
-                    console.log("3! Critical", account.account.id, "token", account.token.id, "net fr", netFlowRate, "(cfa", cfaNetFlowRate, "gda", gdaNetFlowRate, ")");
+                    console.log("! Critical", account.account.id, "token", account.token.id, "net fr", netFlowRate, "(cfa", cfaNetFlowRate, "gda", gdaNetFlowRate, ")");
 
                     const cfaFlows = await this.getOutgoingFlowsFromAccountByToken(account.token.id, account.account.id);
                     let processedCFAFlows = 0;
@@ -151,25 +150,13 @@ class SubGraphReader {
                     where: {
                         id_gt: "${lastId}",
                         totalNetFlowRate_lt: 0,
-                         maybeCriticalAtTimestamp_lt: ${timestamp}
+                        maybeCriticalAtTimestamp_lt: ${timestamp}
                         token: "${_tokenLowerCase}"
                     }
                 ) {
                     id
-                    balanceUntilUpdatedAt
-                    maybeCriticalAtTimestamp
-                    isLiquidationEstimateOptimistic
-                    activeIncomingStreamCount
-                    activeOutgoingStreamCount
-                    activeGDAOutgoingStreamCount
-                    activeCFAOutgoingStreamCount
-                    totalInflowRate
-                    totalOutflowRate
                     totalNetFlowRate
-                    totalCFAOutflowRate
                     totalCFANetFlowRate
-                    totalGDAOutflowRate
-                    totalDeposit
                     token {
                         id
                         symbol
@@ -193,22 +180,10 @@ class SubGraphReader {
                         totalNetFlowRate_lt: 0,
                         maybeCriticalAtTimestamp_lt: ${timestamp}
                     }
-                ) {
+                ){
                     id
-                    balanceUntilUpdatedAt
-                    maybeCriticalAtTimestamp
-                    isLiquidationEstimateOptimistic
-                    activeIncomingStreamCount
-                    activeOutgoingStreamCount
-                    activeGDAOutgoingStreamCount
-                    activeCFAOutgoingStreamCount
-                    totalInflowRate
-                    totalOutflowRate
                     totalNetFlowRate
-                    totalCFAOutflowRate
                     totalCFANetFlowRate
-                    totalGDAOutflowRate
-                    totalDeposit
                     token {
                         id
                         symbol
@@ -241,7 +216,7 @@ class SubGraphReader {
     }
 
     /// Subgraph methods
-    private async _graphql(query: string, accept?: string): Promise<AxiosResponse<any>> {
+    private async _graphql(query: string): Promise<AxiosResponse<any>> {
 
         if (!this.subgraphUrl) {
             throw new Error("Subgraph URL not set");
@@ -283,4 +258,4 @@ class SubGraphReader {
     }
 }
 
-export default SubGraphReader;
+export default Subgraph;
