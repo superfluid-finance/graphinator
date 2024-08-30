@@ -73,5 +73,5 @@ if(loop) {
     await executeLiquidations();
 } else {
     log(new Date().toISOString() + " - run liquidations...");
-    await ghr.executeLiquidations(batchSize, gasMultiplier, token);
+    await ghr.executeLiquidations(batchSize, gasMultiplier, maxGasPrice, token);
 }
