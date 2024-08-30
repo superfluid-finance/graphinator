@@ -1,0 +1,25 @@
+name: Build and Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: oven-sh/setup-bun@v2
+      
+    - name: Install dependencies
+      run: bun install
+      
+    - name: Build the project
+      run: bun build ./grt.ts --outfile=grt-app
+
+    - name: Create release artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: grt-app
+        path: grt-app
