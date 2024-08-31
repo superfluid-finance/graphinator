@@ -15,8 +15,10 @@
   },
   "dependencies": {
     "@superfluid-finance/ethereum-contracts": "^1.9.1",
+    "@superfluid-finance/metadata": "^1.5.0",
     "@types/yargs": "^17.0.32",
     "axios": "^1.7.1",
+    "dotenv": "^16.4.5",
     "ethers": "^6.12.1",
     "yargs": "^17.7.2"
   }

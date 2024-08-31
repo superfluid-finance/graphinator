@@ -1,49 +1,42 @@
-# graphinator
+# About
 
-Graphinator is a small tool to execute liquidations based on graph data.
+The **graphinator** is a lightweight alternative to the [superfluid-sentinel](https://github.com/superfluid-finance/superfluid-sentinel).
+It looks for [critical or insolvent accounts](https://docs.superfluid.finance/docs/protocol/advanced-topics/solvency/liquidations-and-toga) and liquidates their outgoing flows (CFA and GDA).
+Unlike the sentinel, it is stateless and relies on the [Superfluid Subgraph](https://console.superfluid.finance/subgraph) as data source.
 
+By default, the graphinator operates in a _one-shot_ mode, meaning: it checks and liquidates once, then exits.
+For continued operation, it's recommended to set up a cronjob.
+
+Once graphinator instance operates for a to-be-specified chain.
+By default, it operates on all [listed Super Token](https://console.superfluid.finance/supertokens), but also allows to operate only on a single Super Token.
 
 ## Prerequisites
 
-- [Bun](https://bun.sh/)
-
-## Install Bun
-
+Install Bun:
 ```bash
 curl -fsSL https://bun.sh/install | bash
 ```
 
-To install dependencies:
-
+Set up the repo and install dependencies:
 ```bash
+git clone https://github.com/superfluid-finance/graphinator
+cd graphinator
 bun install
 ```
 
 ## Run
 
-- Set your environment variables in a `.env` file. You'll need to provide your private key. (check ```.env.example```)
-- Make the `grt.ts` file executable: `chmod +x grt.ts`
-
-Fast run:
-
-```bash
-./grt.ts -t 0x1eff3dd78f4a14abfa9fa66579bd3ce9e1b30529 
+```
+PRIVATE_KEY=... ./grt.ts -n <network>
 ```
 
-### OR
- 
-```bash
-./grt.ts -t 0x1eff3dd78f4a14abfa9fa66579bd3ce9e1b30529 -l true
-```
+_network_ needs to be the canonical name of a chain where Superfluid is deployed. See [metadata/networks.json](https://github.com/superfluid-finance/protocol-monorepo/blob/dev/packages/metadata/networks.json) (field _name_). For example `base-mainnet`.
 
-### Options
+You can also provide `PRIVATE_KEY` via an `.env` file.
 
-- `--network`: The network to use. Defaults to `base-mainnet`.
-- `--token`: The token to liquidate. This is a required option.
-- `--batchSize`: The number of accounts to liquidate in each batch. Defaults to `15`.
-- `--gasMultiplier`: A multiplier to apply to the estimated gas cost for each transaction. Defaults to `1.2`.
-- `--loop`: If set, the script will run indefinitely, checking for new accounts to liquidate every 15min.
+Make sure `grt.ts` is executable.
 
+See `./grt.ts --help` for more config options.
 
 ## License
 
