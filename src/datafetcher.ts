@@ -14,6 +14,11 @@ class DataFetcher {
     private subgraphUrl: string;
     private provider: JsonRpcProvider;
 
+    /**
+     * Creates an instance of DataFetcher.
+     * @param subgraphUrl - The URL of the subgraph endpoint.
+     * @param provider - The JSON RPC provider.
+     */
     constructor(subgraphUrl: string, provider: JsonRpcProvider) {
         if(!subgraphUrl) {
             throw new Error("subgraph URL not set");
@@ -22,7 +27,13 @@ class DataFetcher {
         this.provider = provider;
     }
 
-    // @TODO: refactor, we are mixing two concepts here get critical accounts with subgraph data
+    /**
+     * Fetches flows to liquidate based on the given token, GDA forwarder contract, and deposit consumed percentage threshold.
+     * @param token - The address of the token.
+     * @param gdaForwarder - The GDA forwarder contract.
+     * @param depositConsumedPctThreshold - The deposit consumed percentage threshold.
+     * @returns A promise that resolves to an array of Flow objects.
+     */
     async getFlowsToLiquidate(token: AddressLike, gdaForwarder: Contract, depositConsumedPctThreshold: number): Promise<Flow[]> {
 
         const returnData: Flow[] = [];
@@ -31,7 +42,7 @@ class DataFetcher {
 
         if (criticalAccounts.length > 0) {
             for (const account of criticalAccounts) {
-                console.log("? Probing ", account.account.id, "token", account.token.id, "net fr", account.totalNetFlowRate, "cfa net fr", account.totalCFANetFlowRate, "gda net fr", await gdaForwarder.getNetFlow(account.token.id, account.account.id));
+                log(`? Probing ${account.account.id} token ${account.token.id} net fr ${account.totalNetFlowRate} cfa net fr ${account.totalCFANetFlowRate} gda net fr ${await gdaForwarder.getNetFlow(account.token.id, account.account.id)}`);
                 const rtb = await targetToken.realtimeBalanceOfNow(account.account.id);
                 const { availableBalance, deposit } = rtb;
                 if (availableBalance < 0) { // critical or insolvent
@@ -46,7 +57,7 @@ class DataFetcher {
                     if (netFlowRate >= ZERO) {
                         continue;
                     }
-                    console.log("! Critical", account.account.id, "token", account.token.id, "net fr", netFlowRate, "(cfa", cfaNetFlowRate, "gda", gdaNetFlowRate, ")");
+                    log(`! Critical ${account.account.id} token ${account.token.id} net fr ${netFlowRate} (cfa ${cfaNetFlowRate} gda ${gdaNetFlowRate})`);
 
                     const cfaFlows = await this.getOutgoingFlowsFromAccountByToken(account.token.id, account.account.id);
                     let processedCFAFlows = 0;
@@ -85,11 +96,11 @@ class DataFetcher {
                         }
                     }
 
-                    console.log(`  available balance ${availableBalance}, deposit ${deposit}, consumed deposit ${consumedDepositPercentage}%, flows to-be-liquidated/total: ${processedCFAFlows}/${cfaFlows.length} cfa | ${processedGDAFlows}/${gdaFlows.length} gda`);
+                    log(`available balance ${availableBalance}, deposit ${deposit}, consumed deposit ${consumedDepositPercentage}%, flows to-be-liquidated/total: ${processedCFAFlows}/${cfaFlows.length} cfa | ${processedGDAFlows}/${gdaFlows.length} gda`);
                     if (processedCFAFlows > 0 || processedGDAFlows > 0) {
                         continue;
                     } else {
-                        console.log("!!!  no cfa|gda outflows to liquidate");
+                        log("!!!  no cfa|gda outflows to liquidate");
                     }
                 }
             }
@@ -97,6 +108,12 @@ class DataFetcher {
         return returnData.sort((a, b) => Number(b.flowrate - a.flowrate));
     }
 
+    /**
+     * Fetches outgoing flows from an account by token.
+     * @param token - The address of the token.
+     * @param account - The address of the account.
+     * @returns A promise that resolves to an array of outgoing flows.
+     */
     async getOutgoingFlowsFromAccountByToken(token: AddressLike, account: AddressLike): Promise<any[]> {
         const _accountLowerCase = account.toString().toLowerCase();
         const _tokenLowerCase = token.toString().toLowerCase();
@@ -121,6 +138,12 @@ class DataFetcher {
         );
     }
 
+    /**
+     * Fetches all flow distributions for a given token and account.
+     * @param token - The address of the token.
+     * @param account - The address of the account.
+     * @returns A promise that resolves to an array of flow distributions.
+     */
     async getAllFlowDistributions(token: AddressLike, account: AddressLike): Promise<any[]> {
         const _accountLowerCase = account.toString().toLowerCase();
         const _tokenLowerCase = token.toString().toLowerCase();
@@ -139,6 +162,11 @@ class DataFetcher {
         );
     }
 
+    /**
+     * Fetches critical accounts by token at the current time.
+     * @param token - The address of the token.
+     * @returns A promise that resolves to an array of critical accounts.
+     */
     async getCriticalAccountsByTokenNow(token: AddressLike): Promise<CriticalAccount[]> {
         const _tokenLowerCase = token.toString().toLowerCase();
         const timestamp = Math.floor(Date.now() / 1000);
@@ -169,6 +197,11 @@ class DataFetcher {
         );
     }
 
+    /**
+     * Fetches critical accounts at a specific timestamp.
+     * @param timestamp - The timestamp to fetch critical accounts at.
+     * @returns A promise that resolves to an array of critical accounts.
+     */
     async getCriticalAccountsAt(timestamp: number): Promise<CriticalAccount[]> {
         return this._queryAllPages(
             (lastId: string) => `{
@@ -195,7 +228,11 @@ class DataFetcher {
             i => i
         );
     }
-
+    /**
+     * Fetches all super tokens.
+     * @param isListed - Whether to fetch listed tokens or not.
+     * @returns A promise that resolves to an array of super tokens.
+     */
     async getSuperTokens(isListed: boolean = true): Promise<any[]> {
         return this._queryAllPages(
             (lastId: string) => `{
@@ -213,7 +250,11 @@ class DataFetcher {
         );
     }
 
-    /// DataFetcher methods
+    /**
+     * Executes a GraphQL query.
+     * @param query - The GraphQL query string.
+     * @returns A promise that resolves to the Axios response.
+     */
     private async _graphql(query: string): Promise<AxiosResponse<any>> {
 
         if (!this.subgraphUrl) {
@@ -228,6 +269,13 @@ class DataFetcher {
         return await axios.post(this.subgraphUrl, {query}, {headers});
     }
 
+    /**
+     * Queries all pages of a paginated GraphQL response.
+     * @param queryFn - A function that generates the GraphQL query string.
+     * @param toItems - A function that extracts items from the Axios response.
+     * @param itemFn - A function that processes each item.
+     * @returns A promise that resolves to an array of all items.
+     */
     private async _queryAllPages(queryFn: (lastId: string) => string, toItems: (res: AxiosResponse<any>) => any[], itemFn: (item: any) => any): Promise<any[]> {
         let lastId = "";
         const items: any[] = [];

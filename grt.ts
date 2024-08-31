@@ -1,13 +1,14 @@
 #!/usr/bin/env bun
 
-import path from "path";
 import dotenv from "dotenv";
 
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import Graphinator from './src/graphinator';
 
+
 const log = (msg: string, lineDecorator="") => console.log(`${new Date().toISOString()} - ${lineDecorator} (Graphinator) ${msg}`);
+
 
 dotenv.config();
 
