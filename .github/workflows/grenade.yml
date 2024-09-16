@@ -1,0 +1,45 @@
+# And Saint Attila raised the hand grenade up on high, saying,
+# 'O Lord, bless this thy hand grenade, that with it thou mayst blow thine enemies to tiny bits, in thy mercy.'
+# And the Lord did grin. And the people did feast upon the lambs, and sloths, and carp, and anchovies,
+# and orangutans, and breakfast cereals, and fruit bats, and large chulapas.
+# And the Lord spake, saying, 'First shalt thou take out the Holy Pin.
+# Then shalt thou count to three, no more, no less. Three shall be the number thou shalt count,
+# and the number of the counting shall be three. Four shalt thou not count, neither count thou two, excepting that thou then proceed to three.
+# Five is right out. Once the number three, being the third number, be reached, then lobbest thou thy Holy Hand Grenade of Antioch towards thy foe, who, being naughty in My sight, shall snuff it.'
+# Brother Maynard Brother
+name: Run Graphinator
+on:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: 'Network to run Graphinator on'
+        required: true
+        default: 'base'
+        type: choice
+        options:
+          - base
+          - optimism
+          - arbitrum
+          - polygon
+
+jobs:
+  run-graphinator:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 'latest'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run Graphinator
+        env:
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          DEPOSIT_CONSUMED_PCT_THRESHOLD: ${{ secrets.DEPOSIT_CONSUMED_PCT_THRESHOLD }}
+        run: bun src/graphinator.ts ${{ github.event.inputs.network }}
