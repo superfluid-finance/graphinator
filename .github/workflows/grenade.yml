@@ -41,5 +41,5 @@ jobs:
       - name: Run Graphinator
         env:
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-          DEPOSIT_CONSUMED_PCT_THRESHOLD: ${{ secrets.DEPOSIT_CONSUMED_PCT_THRESHOLD }}
+          DEPOSIT_CONSUMED_PCT_THRESHOLD: 20
         run: bun src/graphinator.ts ${{ github.event.inputs.network }}
