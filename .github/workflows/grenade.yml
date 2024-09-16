@@ -17,10 +17,10 @@ on:
         default: 'base'
         type: choice
         options:
-          - base
-          - optimism
-          - arbitrum
-          - polygon
+          - base-mainnet
+          - optimism-mainnet
+          - arbitrum-one
+          - polygon-mainnet
 
 jobs:
   run-graphinator:
@@ -42,4 +42,4 @@ jobs:
         env:
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
           DEPOSIT_CONSUMED_PCT_THRESHOLD: 20
-        run: bun src/graphinator.ts ${{ github.event.inputs.network }}
+        run: bun grt.ts -n ${{ github.event.inputs.network }}
