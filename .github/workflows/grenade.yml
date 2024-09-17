@@ -39,7 +39,8 @@ jobs:
         run: bun install
 
       - name: Run Graphinator
+        with:
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
         env:
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-          DEPOSIT_CONSUMED_PCT_THRESHOLD: 20
         run: bun grt.ts -n ${{ github.event.inputs.network }}
