@@ -42,7 +42,7 @@ export default class Graphinator {
         this.provider = new ethers.JsonRpcProvider(`https://rpc-endpoints.superfluid.dev/${networkName}?app=graphinator`);
         this.dataFetcher = new DataFetcher(`https://subgraph-endpoints.superfluid.dev/${networkName}/protocol-v1`, this.provider);
 
-        const privateKey = import.meta.env.PRIVATE_KEY;
+        const privateKey = process.env.PRIVATE_KEY;
         if (!privateKey) {
             throw new Error("No private key provided");
         }
